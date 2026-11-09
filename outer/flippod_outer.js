@@ -49,6 +49,7 @@
     el.ph.textContent = '♫';
     el.pause = $('div', 'fp-pause', p);
     el.lyr = $('div', 'fp-lyr', p);
+    el.lyrT = $('span', '', el.lyr);
     el.bar = $('div', 'fp-bar', p);
     el.fill = $('i', '', el.bar);
     el.title = $('div', 'fp-title', p);
@@ -114,7 +115,7 @@
     const txt = i >= 0 ? lyr[i][1] : '';
     root.classList.toggle('fp-haslyr', !!txt);
     if (txt) {
-      el.lyr.textContent = txt;
+      el.lyrT.textContent = txt;
       el.lyr.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
     }
   }

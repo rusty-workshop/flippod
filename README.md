@@ -12,6 +12,8 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 - **Playlists**: `.m3u`/`.m3u8` files in the music folder are imported automatically. You can also make your own playlists on the phone.
 - **Now Playing**: blurred-art backdrop, a cover that slides in when the track changes and shrinks when paused, scrubbing, and a title that scrolls if it's too long.
 - **Album Shelf**: a 3D cover browser.
+- **Lyrics**: synced `.lrc` lyrics scroll on Now Playing, and the current line shows on the lid screen.
+- **Smart shuffle**: favorites and well-loved songs come up a bit more often, and the same artist never plays twice in a row.
 - **Playback**: shuffle, repeat, Up Next, Play Next, a sleep timer, headset/Bluetooth buttons, pause on headphone unplug, and the queue and position survive reboots.
 - **Home screen**: replaces the stock launcher, with an Apps menu to open everything else.
 - **Outer (lid) screen**: a vinyl clock with today's listening stats and battery/charging, which switches to now-playing (cover art, title, progress) while music plays. With the lid shut, **hold Vol+ for the next track** and **hold Vol− to play/pause**; short presses still change the volume.
@@ -29,7 +31,8 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 | Now Playing | Enter | Play / pause |
 | Now Playing | Left / Right | Previous / next (hold to seek) |
 | Now Playing | 0–9 | Jump to 0–90% of the song |
-| Now Playing | Up / Down | Up Next / go to album |
+| Now Playing | Up | Up Next |
+| Now Playing | Down | Show / hide synced lyrics |
 | Album Shelf | Left / Right | Browse (Enter opens, right softkey plays) |
 | Anywhere | Call | Jump to Now Playing |
 
@@ -41,6 +44,8 @@ Copy music into the phone's **`music`** folder (`/data/media/music`, which the p
 - **adb:** `adb push ~/Music/MyAlbum /data/media/music/` (needs `adb root`).
 
 Flippod picks up new files on its own, or you can use *Settings → Rescan Library*.
+
+**Easiest:** `tools/flippod-sync` (copy it into `~/.local/bin` if you like). It fetches synced lyrics from [LRCLIB](https://lrclib.net) as `.lrc` files next to your songs, copies only new or changed music, playlists and lyrics to the phone, and tells Flippod to rescan. Use `--dry-run` to preview, and `--delete` to also remove songs from the phone that you deleted on the laptop.
 
 ## Install
 

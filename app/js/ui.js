@@ -475,7 +475,13 @@ export class Stack {
     this._title(next.title, anim ? -1 : 0);
     this.softkeys();
     view.hide && view.hide();
-    const done = () => { clearAnims(view.el); view.el.remove(); view.destroy && view.destroy(); };
+    // A reused view (Now Playing) may be pushed again before this pop's animation ends; don't tear it down then.
+    const done = () => {
+      if (this.views.includes(view)) return;
+      clearAnims(view.el);
+      view.el.remove();
+      view.destroy && view.destroy();
+    };
     this._finish();
     clearAnims(next.el);
     if (anim) {
