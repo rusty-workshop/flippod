@@ -1,5 +1,5 @@
 // Screens.
-import { h, icon, setIcon, ListView, Spring, animate, artBox, fillArt, toast, sheet, prompt, showLetter, click, EASE, EASE_IN_OUT } from './ui.js';
+import { h, icon, setIcon, clearAnims, ListView, Spring, animate, artBox, fillArt, toast, sheet, prompt, showLetter, click, EASE, EASE_IN_OUT } from './ui.js';
 import { library, artUrl, artMeta, letterOf, hueOf } from './library.js';
 import { player } from './player.js';
 import { settings, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, deletePlaylist, renamePlaylist } from './settings.js';
@@ -498,11 +498,13 @@ class NowPlaying {
       // same art, nothing to do
     } else if (dir && this.visible) {
       const nxt = this.covers[1 - this.coverFront];
+      clearAnims(cur);
+      clearAnims(nxt);
       this._fillCover(nxt, t);
       nxt.classList.remove('off');
       const d = dir * 150;
-      cur.animate([{ transform: 'translateX(0) rotateY(0) scale(1)', opacity: 1 }, { transform: `translateX(${-d}px) rotateY(${dir * 50}deg) scale(.8)`, opacity: 0 }], { duration: 380, easing: EASE, fill: 'forwards' })
-        .onfinish = () => cur.classList.add('off');
+      const out = cur.animate([{ transform: 'translateX(0) rotateY(0) scale(1)', opacity: 1 }, { transform: `translateX(${-d}px) rotateY(${dir * 50}deg) scale(.8)`, opacity: 0 }], { duration: 380, easing: EASE, fill: 'forwards' });
+      out.onfinish = () => { if (this.covers[this.coverFront] !== cur) cur.classList.add('off'); out.cancel(); };
       nxt.animate([{ transform: `translateX(${d}px) rotateY(${-dir * 50}deg) scale(.8)`, opacity: 0 }, { transform: 'translateX(0) rotateY(0) scale(1)', opacity: 1 }], { duration: 420, easing: EASE });
       this.coverFront = 1 - this.coverFront;
     } else {

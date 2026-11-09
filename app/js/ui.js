@@ -423,6 +423,11 @@ export class ListView {
   }
 }
 
+// Cancel animations left on an element (fill: 'forwards' ones would otherwise pin it in place forever).
+export function clearAnims(el) {
+  for (const a of el.getAnimations()) a.cancel();
+}
+
 // ---------- view stack with header + softkeys ----------
 export class Stack {
   constructor(root) {
@@ -448,14 +453,14 @@ export class Stack {
     view.show && view.show();
     this._title(view.title, anim ? 1 : 0);
     this.softkeys();
+    this._finish();
+    clearAnims(view.el);
     if (anim && prev) {
-      this._finish();
+      clearAnims(prev.el);
       const w = this.body.clientWidth;
-      this._anims = [
-        prev.el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-w * 0.33}px)`, opacity: 0.2 }], { duration: 300, easing: EASE, fill: 'forwards' }),
-        view.el.animate([{ transform: `translateX(${w}px)` }, { transform: 'translateX(0)' }], { duration: 300, easing: EASE }),
-      ];
-      this._anims[0].onfinish = () => { if (this.top !== prev) prev.el.classList.add('off'); };
+      const out = prev.el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-w * 0.33}px)`, opacity: 0.2 }], { duration: 300, easing: EASE, fill: 'forwards' });
+      out.onfinish = () => { if (this.top !== prev) prev.el.classList.add('off'); out.cancel(); };
+      this._anims = [out, view.el.animate([{ transform: `translateX(${w}px)` }, { transform: 'translateX(0)' }], { duration: 300, easing: EASE })];
     } else if (prev) prev.el.classList.add('off');
     view.el.classList.remove('off');
     prev && prev.hide && prev.hide();
@@ -470,9 +475,11 @@ export class Stack {
     this._title(next.title, anim ? -1 : 0);
     this.softkeys();
     view.hide && view.hide();
-    const done = () => { view.el.remove(); view.destroy && view.destroy(); };
+    const done = () => { clearAnims(view.el); view.el.remove(); view.destroy && view.destroy(); };
+    this._finish();
+    clearAnims(next.el);
     if (anim) {
-      this._finish();
+      clearAnims(view.el);
       const w = this.body.clientWidth;
       this._anims = [
         next.el.animate([{ transform: `translateX(${-w * 0.33}px)`, opacity: 0.2 }, { transform: 'translateX(0)', opacity: 1 }], { duration: 280, easing: EASE }),
@@ -486,6 +493,7 @@ export class Stack {
   popToRoot() {
     while (this.views.length > 2) {
       const v = this.views.splice(this.views.length - 2, 1)[0];
+      clearAnims(v.el);
       v.el.remove();
       v.hide && v.hide();
       v.destroy && v.destroy();
