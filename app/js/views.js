@@ -5,6 +5,7 @@ import { player } from './player.js';
 import { settings, playlists, createPlaylist, addToPlaylist, removeFromPlaylist, deletePlaylist, renamePlaylist } from './settings.js';
 import { scan, isScanning } from './scanner.js';
 import { APPS } from './apps.js';
+import { lyricsFor, lineAt } from './lyrics.js';
 
 let stack = null;
 export function bindStack(s) { stack = s; }
@@ -447,7 +448,14 @@ class NowPlaying {
     const right = h('div', 'np-fr'); right.append(this.icRep);
     this.foot.append(left, this.pos, right);
     this.seekHint = h('div', 'np-seek');
-    this.el.append(this.bg, this.stage, this.info, this.prog, this.foot, this.seekHint);
+    this.lyr = h('div', 'np-lyr');
+    this.lyrIn = h('div', 'np-lyr-in');
+    this.lyr.appendChild(this.lyrIn);
+    this.icLrc = h('span', 'np-lrc gone', 'LRC');
+    left.appendChild(this.icLrc);
+    this.lines = null;
+    this.lineIdx = -2;
+    this.el.append(this.bg, this.stage, this.info, this.lyr, this.prog, this.foot, this.seekHint);
     this.scale = new Spring(1, 14);
     this.lastSec = -1;
     this.hold = null;
@@ -532,6 +540,47 @@ class NowPlaying {
     this.flags();
     this.state(true);
     this.tick(true);
+    this._loadLyrics(t);
+  }
+
+  async _loadLyrics(t) {
+    if (this._lyrFor === t.id) return;
+    this._lyrFor = t.id;
+    this.lines = null;
+    this._applyLyrMode();
+    const lines = await lyricsFor(t);
+    if (!player.current || player.current.id !== t.id) return;
+    this.lines = lines;
+    this.lyrIn.textContent = '';
+    this.lyrIn.style.transform = '';
+    this.lineEls = (lines || []).map((l) => {
+      const d = h('div', 'l', l.text || '\u266A');
+      this.lyrIn.appendChild(d);
+      return d;
+    });
+    this.lineIdx = -2;
+    this._applyLyrMode();
+    this.flags();
+    this.tick(true);
+  }
+
+  _applyLyrMode() {
+    this.el.classList.toggle('lyr-on', !!(settings.get('lyricsView') && this.lines));
+  }
+
+  _lyricsTick(t) {
+    if (!this.lines || !this.el.classList.contains('lyr-on')) return;
+    const i = lineAt(this.lines, t);
+    if (i === this.lineIdx) return;
+    const prev = this.lineEls[this.lineIdx];
+    if (prev) prev.classList.remove('on');
+    this.lineIdx = i;
+    const cur = this.lineEls[Math.max(0, i)];
+    if (i >= 0 && cur) cur.classList.add('on');
+    if (cur) {
+      const y = cur.offsetTop + cur.offsetHeight / 2 - this.lyr.clientHeight * 0.4;
+      this.lyrIn.style.transform = `translateY(${-Math.max(0, y).toFixed(0)}px)`;
+    }
   }
 
   _fillCover(c, t) {
@@ -560,6 +609,7 @@ class NowPlaying {
     this.icRep.classList.toggle('on', r !== 'off');
     this.icSleep.classList.toggle('on', !!player.sleepAt);
     this.icSleep.classList.toggle('gone', !player.sleepAt);
+    this.icLrc.classList.toggle('gone', !this.lines);
     this.pos.textContent = player.queue.length ? `${player.index + 1} of ${player.queue.length}` : '';
     stack && stack.top === this && stack.softkeys();
   }
@@ -593,6 +643,7 @@ class NowPlaying {
     const k = d ? Math.min(1, t / d) : 0;
     this.fill.style.transform = `scaleX(${k.toFixed(4)})`;
     this.knob.style.transform = `translateX(${(k * this.bar.clientWidth).toFixed(1)}px)`;
+    this._lyricsTick(t);
     const sec = Math.floor(t);
     if (force || sec !== this.lastSec) {
       this.lastSec = sec;
@@ -632,9 +683,11 @@ class NowPlaying {
       }
       case 'ArrowUp': stack.push(queuePage()); return true;
       case 'ArrowDown': {
-        const t = player.current;
-        const al = t && library.albums.find((a) => a.key === t._ak);
-        if (al) stack.push(albumPage(al));
+        if (!this.lines) { toast(player.current && player.current.lrc ? 'Lyrics not synced' : 'No lyrics for this song'); return true; }
+        settings.set('lyricsView', !settings.get('lyricsView'));
+        this.lineIdx = -2;
+        this._applyLyrMode();
+        this.tick(true);
         return true;
       }
       case 'SoftLeft': player.setShuffle(player.shuffle === 'songs' ? 'off' : 'songs'); toast(player.shuffle === 'songs' ? 'Shuffle on' : 'Shuffle off'); return true;

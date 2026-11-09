@@ -3,6 +3,7 @@
 import { player } from './player.js';
 import { artUrl } from './library.js';
 import * as stats from './stats.js';
+import { lyricsFor } from './lyrics.js';
 
 const SO = window.SettingsObserver;
 let artKey = null;
@@ -58,6 +59,17 @@ function publish() {
 
 function publishStats() { set('flippod.stats', stats.summary()); }
 
+let lyrFor = null;
+async function publishLyrics() {
+  const t = player.current;
+  const id = t ? t.id : null;
+  if (id === lyrFor) return;
+  lyrFor = id;
+  const lines = t ? await lyricsFor(t) : null;
+  if (lyrFor !== id) return;
+  set('flippod.lyrics', lines ? { id, lines: lines.map((l) => [Math.round(l.t * 100) / 100, l.text]) } : null);
+}
+
 export async function initOuter() {
   if (!SO) return;
   try {
@@ -67,12 +79,14 @@ export async function initOuter() {
     if (!SO.initiated && SO.init) SO.init();
   } catch (e) { /* fall through; setValue will queue until connected */ }
   player.addEventListener('track', publish);
+  player.addEventListener('track', publishLyrics);
   player.addEventListener('state', publish);
   player.addEventListener('time', publish);
   player.addEventListener('counted', publishStats);
   setInterval(() => { if (player.playing) publishStats(); }, 60000);
   publishStats();
   publish();
+  publishLyrics();
   SO.observe('flippod.cmd', null, (v) => {
     if (!v || !v.t || v.t <= lastCmd || Date.now() - v.t > 15000) return;
     lastCmd = v.t;

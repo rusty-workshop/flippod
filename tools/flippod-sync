@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""flippod-sync — copy music from the laptop to the Flip's music folder, fetching synced lyrics on the way.
+
+  flippod-sync                      # sync ~/Music
+  flippod-sync ~/Music/Favorite\\ Songs
+  flippod-sync --dry-run            # show what would happen
+  flippod-sync --no-lyrics          # skip the lyrics lookup
+  flippod-sync --delete             # also remove phone files that are no longer on the laptop
+
+Lyrics come from LRCLIB (https://lrclib.net) and are saved as .lrc files next to each song on the laptop,
+so they are fetched only once. Songs with no synced lyrics are remembered and retried after 30 days.
+Needs adb (with `adb root`) and ffprobe.
+"""
+import argparse, json, os, shlex, subprocess, sys, time, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+PHONE_DIR = '/data/media/music'
+AUDIO = {'.mp3', '.m4a', '.m4b', '.aac', '.flac', '.ogg', '.oga', '.opus', '.wav'}
+VIDEO_AUDIO = {'.mp4', '.webm'}
+EXTRA = {'.m3u', '.m3u8', '.lrc'}
+COVERS = {'cover', 'folder', 'front', 'album', 'albumart'}
+CACHE = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'flippod-sync' / 'lyrics-misses.json'
+UA = 'flippod-sync/1.0 (personal music sync for a KaiOS flip phone)'
+RETRY_AFTER = 30 * 86400
+
+
+def wanted(p: Path, videos: bool) -> bool:
+    ext = p.suffix.lower()
+    if p.name.startswith('.'):
+        return False
+    if ext in AUDIO or ext in EXTRA:
+        return True
+    if videos and ext in VIDEO_AUDIO:
+        return True
+    return ext in {'.jpg', '.jpeg', '.png'} and p.stem.lower() in COVERS
+
+
+def adb(*args, check=True, capture=True):
+    r = subprocess.run(['adb', *args], capture_output=capture, text=True)
+    if check and r.returncode != 0:
+        sys.exit(f'adb {" ".join(args[:2])} failed: {(r.stderr or r.stdout).strip()}')
+    return r.stdout if capture else ''
+
+
+# ---------- lyrics ----------
+def tags(path: Path):
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration:format_tags=artist,title,album',
+                        '-of', 'json', str(path)], capture_output=True, text=True)
+    try:
+        f = json.loads(r.stdout)['format']
+    except (ValueError, KeyError):
+        return None
+    t = {k.lower(): v for k, v in f.get('tags', {}).items()}
+    if not t.get('title') or not t.get('artist'):
+        stem = path.stem
+        if ' - ' in stem:
+            a, b = stem.split(' - ', 1)
+            t.setdefault('artist', a)
+            t.setdefault('title', b)
+        else:
+            return None
+    t['duration'] = float(f.get('duration') or 0)
+    return t
+
+
+def lrclib(t):
+    def get(url):
+        req = urllib.request.Request(url, headers={'User-Agent': UA})
+        for attempt in range(6):
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return json.load(r)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return None
+                if e.code == 429 and attempt < 5:  # rate limited: back off and retry
+                    time.sleep(float(e.headers.get('Retry-After') or 0) or 2 * (attempt + 1) ** 2)
+                    continue
+                raise
+    q = {'artist_name': t['artist'], 'track_name': t['title']}
+    if t.get('album'):
+        q['album_name'] = t['album']
+    if t['duration']:
+        q['duration'] = str(round(t['duration']))
+    hit = get('https://lrclib.net/api/get?' + urllib.parse.urlencode(q))
+    if hit and hit.get('syncedLyrics'):
+        return hit['syncedLyrics']
+    res = get('https://lrclib.net/api/search?' + urllib.parse.urlencode({'artist_name': t['artist'], 'track_name': t['title']})) or []
+    for h in res:
+        if h.get('syncedLyrics') and (not t['duration'] or abs((h.get('duration') or 0) - t['duration']) <= 4):
+            return h['syncedLyrics']
+    return None
+
+
+def fetch_lyrics(files, dry):
+    misses = {}
+    if CACHE.exists():
+        try:
+            misses = json.loads(CACHE.read_text())
+        except ValueError:
+            misses = {}
+    now = time.time()
+    todo = [p for p in files if p.suffix.lower() in AUDIO and not p.with_suffix('.lrc').exists()
+            and now - misses.get(str(p), 0) > RETRY_AFTER]
+    if not todo:
+        print('Lyrics: nothing new to look up.')
+        return []
+    print(f'Lyrics: looking up {len(todo)} song(s) on LRCLIB...')
+    if dry:
+        return []
+    found = []
+
+    def one(p):
+        t = tags(p)
+        if not t:
+            return p, None
+        try:
+            return p, lrclib(t)
+        except Exception as e:  # network trouble: don't record as a miss
+            return p, e
+
+    with ThreadPoolExecutor(2) as ex:
+        for i, (p, lrc) in enumerate(ex.map(one, todo), 1):
+            if isinstance(lrc, Exception):
+                print(f'  ! {p.name}: {lrc}')
+                continue
+            if lrc:
+                p.with_suffix('.lrc').write_text(lrc, encoding='utf-8')
+                found.append(p.with_suffix('.lrc'))
+            else:
+                misses[str(p)] = now
+            print(f'\r  {i}/{len(todo)}  found {len(found)}', end='', flush=True)
+    print()
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE.write_text(json.dumps(misses))
+    return found
+
+
+# ---------- sync ----------
+def phone_files():
+    out = adb('shell', f"cd {PHONE_DIR} 2>/dev/null && find . -type f -exec stat -c '%s|%n' {{}} +", check=False)
+    files = {}
+    for line in out.splitlines():
+        if '|' in line:
+            size, name = line.split('|', 1)
+            files[name[2:] if name.startswith('./') else name] = int(size)
+    return files
+
+
+def rescan():
+    tools = Path(__file__).resolve().parent
+    sys.path.insert(0, str(tools))
+    try:
+        adb('forward', 'tcp:6000', 'localfilesystem:/data/local/firefox-debugger-socket')
+        from rdp import RDP
+        r = RDP()
+        tab = 'launcher.localhost' if any('launcher.localhost' in (t.get('url') or '') for t in r.tabs()) else 'flippod.localhost'
+        res = r.eval(r.target(tab), '__fp.scan().then(r => JSON.stringify(r))')
+        print('Flippod rescanned:', res)
+    except Exception:
+        print('Open Flippod → Settings → Rescan Library to pick up the changes.')
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('source', nargs='?', default=str(Path.home() / 'Music'))
+    ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--no-lyrics', action='store_true')
+    ap.add_argument('--delete', action='store_true', help='remove phone files that are not on the laptop')
+    ap.add_argument('--videos', action='store_true', help='also copy .mp4/.webm files')
+    a = ap.parse_args()
+
+    src = Path(a.source).expanduser().resolve()
+    if not src.is_dir():
+        sys.exit(f'{src} is not a folder')
+    # Keep the folder itself when syncing a subfolder of ~/Music (so "Favorite Songs" stays "Favorite Songs").
+    music_root = Path.home() / 'Music'
+    base = music_root if music_root in src.parents or src == music_root else src.parent
+
+    devs = [l for l in adb('devices').splitlines()[1:] if l.strip().endswith('device')]
+    if not devs:
+        sys.exit('No phone found. Plug it in (and check `adb devices`).')
+    adb('root', check=False)
+    adb('wait-for-device')
+
+    local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos)]
+    if not a.no_lyrics:
+        fetch_lyrics(local, a.dry_run)
+        local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos)]
+
+    remote = phone_files()
+    rel = {str(p.relative_to(base)): p for p in local}
+    push = [(r, p) for r, p in rel.items() if remote.get(r) != p.stat().st_size]
+    scope = str(src.relative_to(base)) if src != base else ''
+    stale = [r for r in remote if (not scope or r == scope or r.startswith(scope + '/'))
+             and r not in rel and Path(r).suffix.lower() in AUDIO | EXTRA | VIDEO_AUDIO | {'.jpg', '.jpeg', '.png'}]
+
+    size = sum(p.stat().st_size for _, p in push)
+    print(f'{len(rel)} file(s) on the laptop, {len(push)} to copy ({size / 1e6:.1f} MB)'
+          + (f', {len(stale)} on the phone only' + ('' if a.delete else ' (kept; use --delete to remove)') if stale else ''))
+    if a.dry_run:
+        for r, _ in push[:40]:
+            print('  +', r)
+        if a.delete:
+            for r in stale[:40]:
+                print('  -', r)
+        return
+
+    by_dir = {}
+    for r, p in push:
+        by_dir.setdefault(str(Path(r).parent), []).append(p)
+    for i, (d, ps) in enumerate(sorted(by_dir.items()), 1):
+        target = f'{PHONE_DIR}/{d}' if d != '.' else PHONE_DIR
+        adb('shell', 'mkdir -p ' + shlex.quote(target))
+        for j in range(0, len(ps), 40):
+            adb('push', *map(str, ps[j:j + 40]), target + '/')
+        print(f'\r  copied folder {i}/{len(by_dir)}', end='', flush=True)
+    if by_dir:
+        print()
+    if a.delete and stale:
+        for j in range(0, len(stale), 50):
+            adb('shell', 'rm -f ' + ' '.join(shlex.quote(f'{PHONE_DIR}/{r}') for r in stale[j:j + 50]))
+        print(f'Removed {len(stale)} file(s) from the phone.')
+    if push or (a.delete and stale):
+        rescan()
+    else:
+        print('Phone is already up to date.')
+
+
+if __name__ == '__main__':
+    main()

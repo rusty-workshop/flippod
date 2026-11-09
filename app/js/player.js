@@ -13,19 +13,34 @@ function makeAudio() {
   return a;
 }
 
+// Smart shuffle: favorites (and well-loved tracks) come up a bit more often, and the same
+// artist is never played twice in a row when it can be avoided.
 function shuffled(arr, keepFirst) {
-  const a = arr.slice();
-  let start = 0;
+  const weight = (id) => {
+    const t = library.get(id);
+    if (!t) return 1;
+    return (t.fav ? 1.8 : 1) * (1 + Math.min(t.plays || 0, 20) / 40);
+  };
+  // weighted random order (Efraimidis-Spirakis): key = u^(1/w), sort descending
+  let order = arr.map((id) => ({ id, k: Math.pow(Math.random(), 1 / weight(id)) }))
+    .sort((a, b) => b.k - a.k)
+    .map((x) => x.id);
   if (keepFirst != null) {
-    const i = a.indexOf(keepFirst);
-    if (i > 0) [a[0], a[i]] = [a[i], a[0]];
-    start = 1;
+    const i = order.indexOf(keepFirst);
+    if (i > 0) { order.splice(i, 1); order.unshift(keepFirst); }
   }
-  for (let i = a.length - 1; i > start; i--) {
-    const j = start + Math.floor(Math.random() * (i - start + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+  const artist = (id) => ((library.get(id) || {}).artist || '').toLowerCase();
+  for (let i = 1; i < order.length; i++) {
+    if (artist(order[i]) !== artist(order[i - 1])) continue;
+    // swap in the nearest later track by a different artist
+    for (let j = i + 1; j < order.length; j++) {
+      if (artist(order[j]) !== artist(order[i - 1])) {
+        [order[i], order[j]] = [order[j], order[i]];
+        break;
+      }
+    }
   }
-  return a;
+  return order;
 }
 
 class Player extends EventTarget {

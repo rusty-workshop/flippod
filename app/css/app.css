@@ -234,6 +234,16 @@ body { font-family: "Open Sans", "Noto Sans CJK JP", "Noto Sans CJK SC", "Droid 
 .np-ic.on { opacity: 1; color: var(--a1); }
 .np-ic.gone { display: none; }
 .np-pos { font-size: 10px; font-weight: 600; opacity: .7; font-variant-numeric: tabular-nums; }
+.np-stage, .np-info { transition: opacity .35s ease; }
+.np.lyr-on .np-stage, .np.lyr-on .np-info { opacity: 0; }
+.np-lyr { position: absolute; left: 0; right: 0; top: 6px; height: 202px; overflow: hidden; opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+.np.lyr-on .np-lyr { opacity: 1; }
+.np-lyr-in { padding: 0 14px; transition: transform .6s cubic-bezier(.2, .85, .25, 1); will-change: transform; }
+.np-lyr .l { margin: 0 0 8px; font-size: 13px; font-weight: 700; line-height: 17px; text-align: center; opacity: .32; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); transition: opacity .35s ease, transform .35s ease; }
+.np-lyr .l.on { opacity: 1; transform: scale(1.07); }
+.np-lrc { font-size: 8px; font-weight: 800; line-height: 10px; padding: 0 2px; border: 1px solid currentColor; border-radius: 3px; opacity: .3; transition: opacity .25s ease, color .25s ease; }
+.np.lyr-on .np-lrc { opacity: 1; color: var(--a1); }
+.np-lrc.gone { display: none; }
 .np-seek { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); font-size: 30px; font-weight: 700; opacity: 0; transition: opacity .2s ease; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
 .np.seeking .np-seek { opacity: .9; }
 

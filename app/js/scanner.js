@@ -6,6 +6,7 @@ import { library, albumKeyOf, stripRuntime } from './library.js';
 const AUDIO = /\.(mp3|m4a|m4b|aac|mp4|flac|ogg|oga|opus|wav|webm|3gpp?|amr)$/i;
 const IMAGE = /(^|\/)(cover|folder|front|album|albumart[^/]*)\.(jpe?g|png)$/i;
 const PLAYLIST = /\.m3u8?$/i;
+const LRC = /\.lrc$/i;
 const MUSIC_DIR = /^\/[^/]+\/music\//i;
 
 let scanning = null;
@@ -70,9 +71,11 @@ export async function scan(onProgress = () => {}) {
     const audio = files.filter((f) => AUDIO.test(f.name));
     const images = new Map(); // dir -> File
     const playlists = [];
+    const lrcs = new Map(); // "dir/base" (lowercase, no extension) -> .lrc path
     for (const f of files) {
       if (IMAGE.test(f.name)) images.set(f.name.slice(0, f.name.lastIndexOf('/')), f);
       else if (PLAYLIST.test(f.name)) playlists.push(f);
+      else if (LRC.test(f.name)) lrcs.set(f.name.replace(/\.lrc$/i, '').toLowerCase(), f.name);
     }
 
     const seen = new Set();
@@ -138,11 +141,12 @@ export async function scan(onProgress = () => {}) {
     await db.delMany('tracks', removed);
     for (const id of removed) existing.delete(id);
 
-    // Link art to every track whose album has art.
+    // Link art to every track whose album has art, and lyrics files to their songs.
     const fix = [];
     for (const t of existing.values()) {
       const want = artKeys.has(albumKeyOf(t)) ? albumKeyOf(t) : null;
-      if (t.art !== want) { t.art = want; fix.push(stripRuntime(t)); }
+      const lrc = lrcs.get(t.id.replace(/\.[^./]+$/, '').toLowerCase()) || null;
+      if (t.art !== want || (t.lrc || null) !== lrc) { t.art = want; t.lrc = lrc; fix.push(stripRuntime(t)); }
     }
     await db.putMany('tracks', fix);
 

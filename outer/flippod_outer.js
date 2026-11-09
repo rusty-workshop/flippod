@@ -14,6 +14,8 @@
   let tick = 0;
   let mode = '';
   let battery = null;
+  let lyr = null; // [[t, text], ...]
+  let lyrIdx = -2;
 
   const $ = (tag, cls, parent) => {
     const e = document.createElement(tag);
@@ -46,6 +48,7 @@
     el.ph = $('div', 'fp-ph', p);
     el.ph.textContent = '♫';
     el.pause = $('div', 'fp-pause', p);
+    el.lyr = $('div', 'fp-lyr', p);
     el.bar = $('div', 'fp-bar', p);
     el.fill = $('i', '', el.bar);
     el.title = $('div', 'fp-title', p);
@@ -91,11 +94,28 @@
       const pos = np.playing ? np.pos + (Date.now() - np.at) / 1000 : np.pos;
       const k = np.dur ? Math.max(0, Math.min(1, pos / np.dur)) : 0;
       el.fill.style.transform = `scaleX(${k.toFixed(4)})`;
+      lyricLine(pos);
     }
     if (battery) {
       const pct = Math.round(battery.level * 100) + '%';
       if (el.pct.textContent !== pct) el.pct.textContent = pct;
       el.bolt.style.display = battery.charging ? '' : 'none';
+    }
+  }
+
+  function lyricLine(pos) {
+    let i = -1;
+    if (lyr) {
+      let lo = 0, hi = lyr.length - 1;
+      while (lo <= hi) { const m = (lo + hi) >> 1; if (lyr[m][0] <= pos + 0.3) { i = m; lo = m + 1; } else hi = m - 1; }
+    }
+    if (i === lyrIdx) return;
+    lyrIdx = i;
+    const txt = i >= 0 ? lyr[i][1] : '';
+    root.classList.toggle('fp-haslyr', !!txt);
+    if (txt) {
+      el.lyr.textContent = txt;
+      el.lyr.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'ease-out' });
     }
   }
 
@@ -217,6 +237,9 @@
     const onSt = (v) => { st = v; render(); };
     SettingsObserver.observe('flippod.np', null, onNP);
     SettingsObserver.observe('flippod.stats', null, onSt);
+    const onLyr = (v) => { lyr = v && v.lines && v.lines.length ? v.lines : null; lyrIdx = -2; root.classList.remove('fp-haslyr'); render(); };
+    SettingsObserver.observe('flippod.lyrics', null, onLyr);
+    SettingsObserver.getValue('flippod.lyrics').then(onLyr, () => {});
     SettingsObserver.getValue('flippod.np').then(onNP, () => {});
     SettingsObserver.getValue('flippod.stats').then(onSt, () => {});
     if (navigator.getBattery) {
