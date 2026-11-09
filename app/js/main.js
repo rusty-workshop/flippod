@@ -66,7 +66,14 @@ player.addEventListener('state', hdrState);
 player.addEventListener('track', hdrState);
 
 // ---------- keys ----------
+let lastEnter = 0;
 window.addEventListener('keydown', (e) => {
+  // OK key: ignore auto-repeat and switch bounce (a second press within 150 ms).
+  if (e.key === 'Enter') {
+    const now = performance.now();
+    if (e.repeat || now - lastEnter < 150) { e.preventDefault(); return; }
+    lastEnter = now;
+  }
   if (modal.top) {
     const r = modal.top.onKey(e);
     if (r === 'pass') return;
