@@ -6,6 +6,7 @@ import { settings, playlists, createPlaylist, addToPlaylist, removeFromPlaylist,
 import { scan, isScanning } from './scanner.js';
 import { APPS } from './apps.js';
 import { lyricsFor, lineAt } from './lyrics.js';
+import * as BT from './bt.js';
 
 let stack = null;
 export function bindStack(s) { stack = s; }
@@ -54,7 +55,8 @@ class ListPage {
     if (changed) this.lv.refresh();
   }
   mount(height) { this.lv.resize(height); }
-  show(back) { if (back && this.o.dynamic) this.reload(true); }
+  show(back) { if (back && this.o.dynamic) this.reload(true); if (this.o.onShow) this.o.onShow(this, back); }
+  hide() { if (this.o.onHide) this.o.onHide(this); }
   softkeys() {
     if (this.o.softkeys) return this.o.softkeys(this);
     if (this.o.songs) return { l: 'Shuffle', c: 'Play', r: 'Options' };
@@ -63,6 +65,7 @@ class ListPage {
     return { c: 'Select', r: can ? 'Options' : '' };
   }
   onKey(e) {
+    if (e.key === 'SoftRight' && this.o.onRight) { this.o.onRight(this); return true; }
     if (e.key === 'SoftRight' && this.o.options && this.lv.selected) { this.o.options(this.lv.selected, this); return true; }
     if (e.key === 'SoftLeft' && this.o.songs) {
       const list = this.o.songs();
@@ -73,7 +76,7 @@ class ListPage {
     return this.lv.onKey(e);
   }
   keyUp() { this.lv.keyUp(); }
-  destroy() { player.removeEventListener('track', this._onTrack); }
+  destroy() { player.removeEventListener('track', this._onTrack); if (this.o.onDestroy) this.o.onDestroy(this); }
 }
 
 // ---------- items ----------
@@ -916,6 +919,7 @@ function settingsPage() {
   const page = new ListPage({
     title: 'Settings', dynamic: true,
     items: () => [
+      { id: 'bt', label: 'Bluetooth', right: btStateLabel(), chevron: true },
       { id: 'shuffle', label: 'Shuffle', right: player.shuffle === 'songs' ? 'Songs' : 'Off' },
       { id: 'repeat', label: 'Repeat', right: { off: 'Off', all: 'All', one: 'One' }[player.repeat] },
       { id: 'sleep', label: 'Sleep Timer', right: player.sleepAt ? `${Math.ceil((player.sleepAt - Date.now()) / 60000)} min` : 'Off' },
@@ -941,6 +945,7 @@ function settingsPage() {
           break;
         }
         case 'about': stack.push(aboutPage()); return;
+        case 'bt': stack.push(btPage()); return;
       }
       pg.reload(true);
       const row = pg.lv.pool.find((r) => r._i === i);
@@ -966,4 +971,139 @@ function aboutPage() {
     ],
     softkeys: () => ({}),
   });
+}
+
+// ---------- bluetooth ----------
+function btStateLabel() {
+  if (!BT.available()) return '';
+  return { enabled: 'On', disabled: 'Off', enabling: 'Turning on…', disabling: 'Turning off…' }[BT.state()] || '';
+}
+
+// Re-render a page whenever Bluetooth state changes, for as long as the page exists.
+function watchBt(page) {
+  const fn = () => { page.reload(true); stack.softkeys(); };
+  BT.bt.addEventListener('change', fn);
+  page.o.onDestroy = () => BT.bt.removeEventListener('change', fn);
+}
+
+function btPage() {
+  const page = new ListPage({
+    title: 'Bluetooth', twoLine: false,
+    items: () => {
+      if (!BT.available()) return [{ id: 'na', label: 'Bluetooth unavailable', dim: true }];
+      const l = [{ id: 'toggle', label: 'Bluetooth', right: btStateLabel() }];
+      if (!BT.isOn()) return l;
+      for (const d of BT.paired().filter(BT.isConnected)) l.push({ id: 'c:' + d.address, label: BT.label(d), right: 'Connected', dev: d });
+      l.push({ id: 'pair', label: 'Pair New Device', chevron: true });
+      l.push({ id: 'paired', label: 'Paired Devices', right: String(BT.paired().length), chevron: true });
+      return l;
+    },
+    onEnter: async (it) => {
+      if (it.id === 'toggle') {
+        const on = !BT.isOn();
+        toast(on ? 'Turning Bluetooth on…' : 'Turning Bluetooth off…');
+        try { await BT.setEnabled(on); } catch (e) { toast('Could not change Bluetooth'); }
+      } else if (it.id === 'pair') stack.push(btPairPage());
+      else if (it.id === 'paired') stack.push(btPairedPage());
+      else if (it.dev) btDeviceSheet(it.dev);
+    },
+    softkeys: () => ({ c: 'Select' }),
+  });
+  BT.init().then(() => { BT.refreshConnected(); page.reload(true); });
+  watchBt(page);
+  return page;
+}
+
+async function btDeviceSheet(d) {
+  const conn = BT.isConnected(d);
+  await sheet(BT.label(d), [
+    conn
+      ? { label: 'Disconnect', run: () => btRun(() => BT.disconnect(d), 'Disconnected', 'Could not disconnect') }
+      : { label: 'Connect', run: () => btRun(() => BT.connect(d), `Connected to ${BT.label(d)}`, 'Could not connect', 'Connecting…') },
+    { label: 'Forget Device', run: () => btRun(() => BT.forget(d), 'Device forgotten', 'Could not forget device') },
+  ]);
+}
+
+async function btRun(fn, ok, fail, pending) {
+  if (pending) toast(pending);
+  try { await fn(); toast(ok); } catch (e) { toast(fail); }
+}
+
+function btPairPage() {
+  const found = new Map();
+  let searching = false;
+  const page = new ListPage({
+    title: 'Pair New Device', kind: 'song', rowH: 38, twoLine: true,
+    emptyText: 'Searching for devices…',
+    items: () => [...found.values()]
+      .sort((a, b) => (b.name ? 1 : 0) - (a.name ? 1 : 0) || BT.label(a).localeCompare(BT.label(b)))
+      .map((d) => ({ id: d.address, label: BT.label(d), sub: d.paired ? `${BT.kind(d)} · Paired` : BT.kind(d), dev: d })),
+    onEnter: async (it) => {
+      const d = it.dev;
+      if (d.paired) { btRun(() => BT.connect(d), `Connected to ${BT.label(d)}`, 'Could not connect', 'Connecting…'); return; }
+      toast(`Pairing with ${BT.label(d)}…`);
+      try {
+        await BT.pair(d);
+        toast(BT.isConnected(d) ? `Connected to ${BT.label(d)}` : `Paired with ${BT.label(d)}`);
+        stack.pop();
+      } catch (e) {
+        toast('Pairing failed');
+        scan();
+      }
+    },
+    softkeys: () => ({ c: 'Pair', r: searching ? 'Searching…' : 'Rescan' }),
+    onRight: () => { if (!searching) scan(); },
+    onShow: () => scan(),
+    onHide: () => BT.stopDiscovery(),
+  });
+  const end = () => {
+    searching = false;
+    page.lv.o.emptyText = 'No devices found. Press Rescan.';
+    page.reload(true);
+    stack.top === page && stack.softkeys();
+  };
+  async function scan() {
+    if (!BT.isOn()) { toast('Turn Bluetooth on first'); return; }
+    found.clear();
+    searching = true;
+    page.lv.o.emptyText = 'Searching for devices…';
+    page.reload(false);
+    stack.top === page && stack.softkeys();
+    let reloadT = 0;
+    try {
+      await BT.discover((d) => {
+        if (!d || !d.address) return;
+        found.set(d.address, d);
+        clearTimeout(reloadT);
+        reloadT = setTimeout(() => page.reload(true), 250);
+      });
+    } catch (e) { toast('Could not search'); end(); }
+  }
+  BT.bt.addEventListener('discoveryend', end);
+  page.o.onDestroy = () => { BT.bt.removeEventListener('discoveryend', end); BT.stopDiscovery(); };
+  return page;
+}
+
+function btPairedPage() {
+  const page = new ListPage({
+    title: 'Paired Devices', kind: 'song', rowH: 38, twoLine: true,
+    emptyText: 'No paired devices yet',
+    items: () => BT.paired()
+      .map((d) => ({ d, c: BT.isConnected(d) }))
+      .sort((a, b) => (b.c - a.c) || BT.label(a.d).localeCompare(BT.label(b.d)))
+      .map(({ d, c }) => ({ id: d.address, label: BT.label(d), sub: `${BT.kind(d)} · ${c ? 'Connected' : 'Not connected'}`, dev: d, playing: c })),
+    onEnter: (it) => {
+      const d = it.dev;
+      if (BT.isConnected(d)) btRun(() => BT.disconnect(d), 'Disconnected', 'Could not disconnect');
+      else btRun(() => BT.connect(d), `Connected to ${BT.label(d)}`, 'Could not connect', 'Connecting…');
+    },
+    options: (it) => btDeviceSheet(it.dev),
+    softkeys: (pg) => {
+      const sel = pg.lv && pg.lv.selected;
+      if (!sel) return {};
+      return { c: BT.isConnected(sel.dev) ? 'Disconnect' : 'Connect', r: 'Options' };
+    },
+  });
+  watchBt(page);
+  return page;
 }

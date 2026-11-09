@@ -38,7 +38,8 @@
       "volumemanager": {},
       "settings": {
         "access": "readwrite"
-      }
+      },
+      "bluetooth-privileged": {}
     },
     "serviceworker": {
       "script_url": "sw.js"
