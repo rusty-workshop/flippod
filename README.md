@@ -14,6 +14,7 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 - **Album Shelf**: a 3D cover browser.
 - **Playback**: shuffle, repeat, Up Next, Play Next, a sleep timer, headset/Bluetooth buttons, pause on headphone unplug, and the queue and position survive reboots.
 - **Home screen**: replaces the stock launcher, with an Apps menu to open everything else.
+- **Outer (lid) screen**: a vinyl clock with today's listening stats and battery/charging, which switches to now-playing (cover art, title, progress) while music plays. With the lid shut, **hold Vol+ for the next track** and **hold Vol− to play/pause**; short presses still change the volume.
 - **Themes**: Classic, Midnight and Album Color, with six accent colors.
 
 ## Keys
@@ -51,6 +52,12 @@ tools/homescreen.sh on   # make Flippod the home screen (off = stock launcher)
 ```
 
 KaiOS hardcodes the home screen to `launcher.localhost`, so `homescreen.sh` repoints the `/data/local/webapps/vroot/launcher` symlink to Flippod and restarts the UI. To undo it, run `tools/homescreen.sh off`.
+
+```bash
+tools/outer.sh on        # add Flippod's layer to the outer screen (off = stock)
+```
+
+The outer screen is the system app's `index_remote.html`, which is served from the `/data/local/webapps/vroot/system` symlink. `outer.sh on` builds a patched copy of the stock system zip in `/data/local/flippod-system/`, where only `index_remote.html` gains two tags and `outer/flippod_outer.{js,css}` are added, then points the symlink at that copy. The layer sits inside the stock idle screen, so calls, the selfie camera and the volume popup still appear over it. Flippod and the layer talk through the KaiOS settings service (`flippod.np`, `flippod.stats`, `flippod.cmd`). **If KaiOS ever updates the system app, run `outer.sh off` and then `on` again**, so the patch is rebuilt from the new stock zip.
 
 ## Development tools
 

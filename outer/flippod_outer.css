@@ -1,0 +1,54 @@
+/* Flippod outer-screen layer (128x160). */
+#fp-outer {
+  --p: 0;
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #1d1d24 0%, #050507 72%);
+  color: #fff;
+  font-family: "Open Sans", sans-serif;
+}
+#fp-outer .fp-clock, #fp-outer .fp-np { position: absolute; inset: 0; transition: opacity .35s ease; }
+#fp-outer[data-mode="np"] .fp-clock, #fp-outer:not([data-mode="np"]) .fp-np { opacity: 0; pointer-events: none; }
+
+/* battery */
+.fp-bat { position: absolute; top: 3px; right: 5px; font-size: 9px; font-weight: 600; opacity: .7; display: flex; gap: 2px; align-items: center; }
+.fp-bolt { color: #4fe6bb; }
+
+/* vinyl clock */
+.fp-disc { position: absolute; left: 50%; top: 16px; width: 108px; height: 108px; margin-left: -54px; border-radius: 50%; }
+.fp-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, #5cb0ff, #b39aff, #ff7fb3, #ffb75a, #5cb0ff); }
+#fp-outer.fp-charging .fp-ring { background: conic-gradient(from 0deg, #4fe6bb, #5cb0ff, #4fe6bb); }
+/* hides the part of the ring not yet "filled" */
+.fp-mask { position: absolute; inset: -1px; border-radius: 50%; background: conic-gradient(transparent 0turn, transparent calc(var(--p) * 1turn), rgba(255, 255, 255, 0.08) calc(var(--p) * 1turn), rgba(255, 255, 255, 0.08) 1turn); }
+.fp-vinyl {
+  position: absolute; inset: 5px; border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 33%, rgba(255, 255, 255, 0.045) 34% 35%, transparent 36% 46%, rgba(255, 255, 255, 0.045) 47% 48%, transparent 49% 60%, rgba(255, 255, 255, 0.04) 61% 62%, transparent 63%),
+    radial-gradient(circle at 50% 50%, #26262e 0%, #111115 70%, #0b0b0e 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.fp-time { font-size: 27px; font-weight: 700; letter-spacing: -.5px; line-height: 30px; font-variant-numeric: tabular-nums; }
+.fp-date { font-size: 9px; font-weight: 600; opacity: .6; text-transform: uppercase; letter-spacing: .6px; }
+
+/* stats */
+.fp-stats { position: absolute; left: 4px; right: 4px; top: 130px; text-align: center; line-height: 13px; }
+.fp-s1 { font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-s2 { font-size: 9px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* now playing */
+.fp-art, .fp-ph { position: absolute; left: 0; top: 0; width: 128px; height: 128px; object-fit: cover; }
+.fp-ph { display: flex; align-items: center; justify-content: center; font-size: 46px; background: linear-gradient(135deg, #5cb0ff, #6436e0); }
+.fp-pause { position: absolute; left: 0; top: 0; width: 128px; height: 128px; background: rgba(0, 0, 0, 0.45) center / 34px no-repeat; opacity: 0; transition: opacity .3s ease;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z'/%3E%3C/svg%3E"); }
+#fp-outer.fp-paused .fp-pause { opacity: 1; }
+.fp-bar { position: absolute; left: 0; right: 0; top: 126px; height: 2px; background: rgba(255, 255, 255, 0.2); }
+.fp-bar i { position: absolute; inset: 0; background: linear-gradient(90deg, #5cb0ff, #ff7fb3); transform-origin: left; transform: scaleX(0); transition: transform 1s linear; }
+.fp-title { position: absolute; left: 5px; right: 5px; top: 131px; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; line-height: 14px; }
+.fp-title span { display: inline-block; }
+.fp-artist { position: absolute; left: 5px; right: 5px; top: 145px; font-size: 9px; opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 12px; }
+
+.fp-toast { position: absolute; left: 50%; top: 46px; width: 44px; height: 44px; margin-left: -22px; border-radius: 12px; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; font-size: 22px; opacity: 0; transform: scale(.8); transition: opacity .2s ease, transform .25s ease; }
+.fp-toast.on { opacity: 1; transform: none; }

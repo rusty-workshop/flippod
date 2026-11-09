@@ -2,6 +2,7 @@
 import { library, artUrl } from './library.js';
 import { getFile } from './scanner.js';
 import { settings } from './settings.js';
+import * as stats from './stats.js';
 
 const STATE_KEY = 'fp.state';
 
@@ -63,7 +64,15 @@ class Player extends EventTarget {
     a.addEventListener('ended', () => { if (a === this.audio) this._ended(); });
     a.addEventListener('play', () => { if (a === this.audio) this._emit('state'); });
     a.addEventListener('pause', () => { if (a === this.audio) { this._emit('state'); this.save(); } });
-    a.addEventListener('timeupdate', () => { if (a === this.audio) this._progress(); });
+    a.addEventListener('timeupdate', () => {
+      if (a !== this.audio) return;
+      const now = a.currentTime;
+      if (!a.paused && this._lastT != null) stats.addSeconds(now - this._lastT);
+      this._lastT = now;
+      this._progress();
+    });
+    a.addEventListener('seeking', () => { if (a === this.audio) this._lastT = null; });
+    a.addEventListener('emptied', () => { if (a === this.audio) this._lastT = null; });
     a.addEventListener('loadedmetadata', () => {
       if (a !== this.audio) return;
       const c = this.current;
@@ -113,6 +122,7 @@ class Player extends EventTarget {
     const t = this.current;
     if (!t) return;
     this.counted = false;
+    this._lastT = null;
     this._errSkips = autoplay ? this._errSkips : 0;
     const want = this.queue[this.index];
     if (this.nextId === want && this.next_.src) {
@@ -191,6 +201,8 @@ class Player extends EventTarget {
     t.plays = (t.plays || 0) + 1;
     t.lastPlayed = Date.now();
     library.update(t);
+    stats.addSong(t.artist);
+    this._emit('counted');
   }
 
   toggle() { this.playing ? this.pause() : this.play(); }

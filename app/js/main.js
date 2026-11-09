@@ -4,6 +4,7 @@ import { scan, storage } from './scanner.js';
 import { player } from './player.js';
 import { settings } from './settings.js';
 import { MainMenu, bindStack, openNowPlaying } from './views.js';
+import { initOuter } from './outer.js';
 
 window.FLIPPOD_VERSION = '1.0.0';
 const HOME = /^launcher\./.test(location.hostname);
@@ -154,6 +155,7 @@ async function boot() {
   }
   if (ov) ov.done();
   warmThumbs();
+  try { initOuter(); } catch (e) { console.error('outer bridge', e); }
   if (!player.queue.length) player.restore();
   // watch for new music
   const st = storage();

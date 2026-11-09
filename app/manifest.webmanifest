@@ -35,7 +35,10 @@
         "access": "readonly"
       },
       "audio-channel-content": {},
-      "volumemanager": {}
+      "volumemanager": {},
+      "settings": {
+        "access": "readwrite"
+      }
     },
     "serviceworker": {
       "script_url": "sw.js"
