@@ -8,6 +8,7 @@ import { initOuter } from './outer.js';
 import * as BT from './bt.js';
 import { initAvrcp } from './avrcp.js';
 import { initScrobble } from './scrobble.js';
+import * as WIFI from './wifi.js';
 
 window.FLIPPOD_VERSION = '1.0.0';
 const HOME = /^launcher\./.test(location.hostname);
@@ -169,6 +170,7 @@ async function boot() {
   BT.init();
   initAvrcp().catch(() => {});
   initScrobble();
+  WIFI.init();
   if (!player.queue.length) player.restore();
   // watch for new music
   const st = storage();

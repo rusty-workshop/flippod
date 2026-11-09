@@ -8,6 +8,7 @@ import { APPS } from './apps.js';
 import { lyricsFor, lineAt } from './lyrics.js';
 import * as BT from './bt.js';
 import * as LB from './scrobble.js';
+import * as WIFI from './wifi.js';
 
 let stack = null;
 export function bindStack(s) { stack = s; }
@@ -920,6 +921,7 @@ function settingsPage() {
   const page = new ListPage({
     title: 'Settings', dynamic: true,
     items: () => [
+      { id: 'wifi', label: 'Wi-Fi', right: wifiStateLabel(), chevron: true },
       { id: 'bt', label: 'Bluetooth', right: btStateLabel(), chevron: true },
       { id: 'lb', label: 'ListenBrainz', right: LB.enabled() ? 'On' : 'Off', chevron: true },
       { id: 'shuffle', label: 'Shuffle', right: player.shuffle === 'songs' ? 'Songs' : 'Off' },
@@ -948,6 +950,7 @@ function settingsPage() {
         }
         case 'about': stack.push(aboutPage()); return;
         case 'bt': stack.push(btPage()); return;
+        case 'wifi': stack.push(wifiPage()); return;
         case 'lb': stack.push(lbPage()); return;
       }
       pg.reload(true);
@@ -1204,5 +1207,143 @@ function lbTracksPage(pl) {
   });
   LB.playlistTracks(pl.id).then((t) => { tracks = t; page.lv.o.emptyText = 'Empty playlist'; page.reload(false); },
     () => { page.lv.o.emptyText = 'Could not load this playlist'; page.reload(false); });
+  return page;
+}
+
+// ---------- Wi-Fi ----------
+function wifiStateLabel() {
+  if (!WIFI.available()) return '';
+  if (!WIFI.isOn()) return 'Off';
+  const c = WIFI.current();
+  return c.status === 'connected' && c.ssid ? c.ssid : 'On';
+}
+
+function watchWifi(page) {
+  WIFI.init();
+  const fn = () => { page.reload(true); stack.top === page && stack.softkeys(); };
+  WIFI.wifi.addEventListener('change', fn);
+  const prev = page.o.onDestroy;
+  page.o.onDestroy = (pg) => { WIFI.wifi.removeEventListener('change', fn); prev && prev(pg); };
+}
+
+const wifiStatusText = (c) => ({ connected: 'Connected', connecting: 'Connecting…', associated: 'Connecting…', authenticating: 'Connecting…', connectingfailed: 'Could not connect' }[c.status] || '');
+
+function wifiPage() {
+  const page = new ListPage({
+    title: 'Wi-Fi', kind: 'song', rowH: 38, twoLine: true,
+    items: () => {
+      if (!WIFI.available()) return [{ id: 'na', label: 'Wi-Fi unavailable', dim: true }];
+      const l = [{ id: 'toggle', label: 'Wi-Fi', sub: WIFI.isOn() ? 'On' : 'Off' }];
+      if (!WIFI.isOn()) return l;
+      const c = WIFI.current();
+      if (c.ssid && c.status !== 'disconnected') l.push({ id: 'cur', label: c.ssid, sub: wifiStatusText(c) || 'Connected', playing: c.status === 'connected' });
+      l.push({ id: 'avail', label: 'Available Networks', sub: 'Scan and join', chevron: true });
+      l.push({ id: 'saved', label: 'Saved Networks', sub: 'Join or forget', chevron: true });
+      return l;
+    },
+    onEnter: async (it) => {
+      if (it.id === 'toggle') {
+        const on = !WIFI.isOn();
+        toast(on ? 'Turning Wi-Fi on…' : 'Turning Wi-Fi off…');
+        try { await WIFI.setEnabled(on); } catch (e) { toast('Could not change Wi-Fi'); }
+      } else if (it.id === 'avail') stack.push(wifiScanPage());
+      else if (it.id === 'saved') stack.push(wifiSavedPage());
+      else if (it.id === 'cur') {
+        const nets = await WIFI.known();
+        const n = nets.find((x) => x.ssid === it.label);
+        if (!n) return;
+        await sheet(it.label, [{ label: 'Forget Network', run: () => wifiForget(n) }]);
+      }
+    },
+    softkeys: () => ({ c: 'Select' }),
+  });
+  watchWifi(page);
+  return page;
+}
+
+async function wifiForget(n) {
+  try { await WIFI.forget(n); toast(`Forgot ${n.ssid}`); } catch (e) { toast('Could not forget network'); }
+}
+
+async function wifiJoin(net, saved) {
+  if (WIFI.kind(net) === 'WPA-EAP') { toast('Enterprise Wi-Fi: use KaiOS Settings'); return false; }
+  let pw = null;
+  if (WIFI.needsPassword(net, saved)) {
+    pw = await prompt(`Password for ${net.ssid}`, '');
+    if (pw == null) return false;
+    if (WIFI.kind(net) !== 'WEP' && pw.length < 8) { toast('Passwords are at least 8 characters'); return false; }
+  }
+  toast(`Connecting to ${net.ssid}…`);
+  const result = WIFI.waitForResult();
+  try { await WIFI.connect(net, pw); } catch (e) { toast('Could not connect'); return false; }
+  const r = await result;
+  toast(r === 'connected' ? `Connected to ${net.ssid}` : r === 'failed' ? (pw != null ? 'Wrong password?' : 'Could not connect') : 'Still connecting…');
+  return r === 'connected';
+}
+
+function wifiScanPage() {
+  let nets = [];
+  let savedSsids = new Set();
+  let scanning = false;
+  const page = new ListPage({
+    title: 'Available Networks', kind: 'song', rowH: 38, twoLine: true,
+    emptyText: 'Scanning…',
+    items: () => nets.map((n, i) => ({
+      id: 'n' + i, label: n.ssid, net: n, playing: !!n.connected,
+      sub: [n.connected ? 'Connected' : savedSsids.has(n.ssid) ? 'Saved' : '', WIFI.securityLabel(n), WIFI.signalLabel(n)].filter(Boolean).join(' · '),
+    })),
+    onEnter: async (it) => { if (it.net.connected) { toast('Already connected'); return; } if (await wifiJoin(it.net, savedSsids.has(it.net.ssid))) stack.pop(); },
+    softkeys: () => ({ c: 'Join', r: scanning ? 'Scanning…' : 'Rescan' }),
+    onRight: () => { if (!scanning) scan(); },
+    onShow: (pg, back) => { if (!back) scan(); },
+  });
+  async function scan() {
+    if (!WIFI.isOn()) { toast('Turn Wi-Fi on first'); return; }
+    scanning = true;
+    stack.top === page && stack.softkeys();
+    try {
+      const [found, saved] = await Promise.all([WIFI.scan(), WIFI.known()]);
+      savedSsids = new Set(saved.map((x) => x.ssid));
+      nets = found;
+      page.lv.o.emptyText = 'No networks found. Press Rescan.';
+    } catch (e) {
+      page.lv.o.emptyText = 'Scan failed. Press Rescan.';
+    }
+    scanning = false;
+    page.reload(true);
+    stack.top === page && stack.softkeys();
+  }
+  watchWifi(page);
+  return page;
+}
+
+function wifiSavedPage() {
+  let nets = [];
+  const page = new ListPage({
+    title: 'Saved Networks', kind: 'song', rowH: 38, twoLine: true,
+    emptyText: 'No saved networks',
+    items: () => {
+      const c = WIFI.current();
+      return nets.map((n, i) => {
+        const on = c.status === 'connected' && c.ssid === n.ssid;
+        return { id: 's' + i, label: n.ssid, net: n, playing: on, sub: `${on ? 'Connected · ' : ''}${WIFI.securityLabel(n)}` };
+      });
+    },
+    onEnter: (it) => {
+      const c = WIFI.current();
+      if (c.status === 'connected' && c.ssid === it.net.ssid) { toast('Already connected'); return; }
+      wifiJoin(it.net, true);
+    },
+    options: async (it, pg) => {
+      await sheet(it.label, [
+        { label: 'Join', run: () => wifiJoin(it.net, true) },
+        { label: 'Forget Network', run: async () => { await wifiForget(it.net); load(); } },
+      ]);
+    },
+    softkeys: () => ({ c: 'Join', r: 'Options' }),
+  });
+  async function load() { nets = await WIFI.known(); page.reload(true); }
+  load();
+  watchWifi(page);
   return page;
 }

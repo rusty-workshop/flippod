@@ -39,7 +39,8 @@
       "settings": {
         "access": "readwrite"
       },
-      "bluetooth-privileged": {}
+      "bluetooth-privileged": {},
+      "wifi-manage": {}
     },
     "serviceworker": {
       "script_url": "sw.js"
