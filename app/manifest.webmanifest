@@ -1,0 +1,28 @@
+{
+  "name": "Flippod",
+  "short_name": "Flippod",
+  "description": "A music player for the flip.",
+  "start_url": "/index.html",
+  "lang": "en-US",
+  "orientation": "natural",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "icons": [
+    { "src": "/img/icon-56.png", "sizes": "56x56", "type": "image/png" },
+    { "src": "/img/icon-112.png", "sizes": "112x112", "type": "image/png" }
+  ],
+  "b2g_features": {
+    "version": "1.0.0",
+    "core": true,
+    "type": "certified",
+    "developer": { "name": "Rusty" },
+    "permissions": {
+      "device-storage:music": { "access": "readonly" },
+      "device-storage:sdcard": { "access": "readonly" },
+      "audio-channel-content": {},
+      "volumemanager": {}
+    },
+    "serviceworker": { "script_url": "sw.js" },
+    "messages": ["media-button"]
+  }
+}
