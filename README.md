@@ -21,6 +21,7 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 - **Outer (lid) screen**: a vinyl clock with today's listening stats and battery/charging, which switches to now-playing (cover art, title, progress) while music plays. With the lid shut, **hold Vol+ for the next track** and **hold Vol− to play/pause**; short presses still change the volume.
 - **Bluetooth**: *Settings → Bluetooth* turns it on/off, pairs new devices, and connects, disconnects or forgets paired ones (KaiOS's own quick settings aren't reachable from Flippod).
 - **Bluetooth song info**: the current song and play state go to connected Bluetooth devices, so car stereos and headphones can show the title and artist.
+- **ListenBrainz**: scrobbles what you play (queued while offline, sent over Wi-Fi) and shows your weekly *Recommendations* playlists, with songs you already own playable straight from the list.
 - **Themes**: Classic, Midnight and Album Color, with six accent colors.
 
 ## Keys
@@ -67,6 +68,13 @@ tools/outer.sh on        # add Flippod's layer to the outer screen (off = stock)
 ```
 
 The outer screen is the system app's `index_remote.html`, which is served from the `/data/local/webapps/vroot/system` symlink. `outer.sh on` builds a patched copy of the stock system zip in `/data/local/flippod-system/`, where only `index_remote.html` gains two tags and `outer/flippod_outer.{js,css}` are added, then points the symlink at that copy. The layer sits inside the stock idle screen, so calls, the selfie camera and the volume popup still appear over it. Flippod and the layer talk through the KaiOS settings service (`flippod.np`, `flippod.stats`, `flippod.cmd`). **If KaiOS ever updates the system app, run `outer.sh off` and then `on` again**, so the patch is rebuilt from the new stock zip.
+
+## ListenBrainz
+
+1. Get your token from https://listenbrainz.org/settings/ (sign in with a MusicBrainz account).
+2. With the phone plugged in, run `tools/listenbrainz-login` and paste the token when asked.
+
+A song counts once you've heard half of it or 4 minutes. Plays wait in a queue until the phone has Wi-Fi. *Settings → ListenBrainz* shows the queue, has a Send Now button, and opens your Recommendations. `tools/listenbrainz-login --logout` removes the token.
 
 ## Development tools
 

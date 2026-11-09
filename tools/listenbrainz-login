@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Connect Flippod to ListenBrainz without typing a 36-character token on T9.
+
+1. Get your token at https://listenbrainz.org/settings/ (sign in with a MusicBrainz account).
+2. Plug in the phone and run:  tools/listenbrainz-login
+3. Paste the token when asked (it isn't echoed or saved in your shell history).
+
+`tools/listenbrainz-login --logout` removes it from the phone again.
+"""
+import getpass, json, subprocess, sys, urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from rdp import RDP  # noqa: E402
+
+
+def flippod_tab(r):
+    urls = [t.get('url') or '' for t in r.tabs()]
+    for host in ('launcher.localhost', 'flippod.localhost'):
+        if any(host in u for u in urls):
+            return r.target(host)
+    sys.exit('Flippod is not running on the phone.')
+
+
+def main():
+    subprocess.run(['adb', 'root'], capture_output=True)
+    subprocess.run(['adb', 'wait-for-device'])
+    subprocess.run(['adb', 'forward', 'tcp:6000', 'localfilesystem:/data/local/firefox-debugger-socket'], capture_output=True, check=True)
+    r = RDP()
+    tab = flippod_tab(r)
+
+    if '--logout' in sys.argv:
+        print(r.eval(tab, "(()=>{__fp.settings.set('lbToken','');__fp.settings.set('lbUser','');return 'disconnected'})()"))
+        return
+
+    token = getpass.getpass('ListenBrainz token: ').strip()
+    if not token:
+        sys.exit('No token entered.')
+    req = urllib.request.Request('https://api.listenbrainz.org/1/validate-token',
+                                 headers={'Authorization': f'Token {token}', 'User-Agent': 'flippod-listenbrainz-login/1.0'})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        info = json.load(resp)
+    if not info.get('valid'):
+        sys.exit('ListenBrainz says that token is not valid.')
+    user = info['user_name']
+    js = "(()=>{__fp.settings.set('lbToken',%s);__fp.settings.set('lbUser',%s);return 'ok'})()" % (json.dumps(token), json.dumps(user))
+    if r.eval(tab, js) != 'ok':
+        sys.exit('Could not save the token in Flippod.')
+    print(f'Flippod is now scrobbling to ListenBrainz as {user}.')
+    print('Plays are queued while the phone is offline and sent once it has Wi-Fi.')
+
+
+if __name__ == '__main__':
+    main()

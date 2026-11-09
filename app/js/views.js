@@ -7,6 +7,7 @@ import { scan, isScanning } from './scanner.js';
 import { APPS } from './apps.js';
 import { lyricsFor, lineAt } from './lyrics.js';
 import * as BT from './bt.js';
+import * as LB from './scrobble.js';
 
 let stack = null;
 export function bindStack(s) { stack = s; }
@@ -920,6 +921,7 @@ function settingsPage() {
     title: 'Settings', dynamic: true,
     items: () => [
       { id: 'bt', label: 'Bluetooth', right: btStateLabel(), chevron: true },
+      { id: 'lb', label: 'ListenBrainz', right: LB.enabled() ? 'On' : 'Off', chevron: true },
       { id: 'shuffle', label: 'Shuffle', right: player.shuffle === 'songs' ? 'Songs' : 'Off' },
       { id: 'repeat', label: 'Repeat', right: { off: 'Off', all: 'All', one: 'One' }[player.repeat] },
       { id: 'sleep', label: 'Sleep Timer', right: player.sleepAt ? `${Math.ceil((player.sleepAt - Date.now()) / 60000)} min` : 'Off' },
@@ -946,6 +948,7 @@ function settingsPage() {
         }
         case 'about': stack.push(aboutPage()); return;
         case 'bt': stack.push(btPage()); return;
+        case 'lb': stack.push(lbPage()); return;
       }
       pg.reload(true);
       const row = pg.lv.pool.find((r) => r._i === i);
@@ -1105,5 +1108,101 @@ function btPairedPage() {
     },
   });
   watchBt(page);
+  return page;
+}
+
+// ---------- ListenBrainz ----------
+function lbPage() {
+  const page = new ListPage({
+    title: 'ListenBrainz', kind: 'song', rowH: 38, twoLine: true,
+    items: () => {
+      if (!LB.enabled()) {
+        return [
+          { id: 'na', label: 'Not set up', sub: 'Plays are saved and sent later' },
+          { id: 'how', label: 'Set up from your computer', sub: 'Run tools/listenbrainz-login', dim: true },
+          { id: 'q', label: 'Waiting to send', sub: `${LB.queued()} play${LB.queued() === 1 ? '' : 's'}` },
+        ];
+      }
+      const n = LB.queued();
+      return [
+        { id: 'acct', label: LB.user() || 'Connected', sub: 'Scrobbling to ListenBrainz' },
+        { id: 'q', label: 'Waiting to send', sub: `${n} play${n === 1 ? '' : 's'}${LB.lastError ? ' · ' + LB.lastError : LB.lastSent ? ' · all caught up' : ''}` },
+        { id: 'send', label: 'Send now', sub: navigator.onLine ? 'Upload queued plays' : 'Needs Wi-Fi' },
+        { id: 'recs', label: 'Recommendations', sub: 'Playlists made for you', chevron: true },
+        { id: 'off', label: 'Disconnect', sub: 'Forget the token on this phone', dim: true },
+      ];
+    },
+    onEnter: async (it, i, pg) => {
+      switch (it.id) {
+        case 'send': {
+          if (!navigator.onLine) { toast('Connect to Wi-Fi first'); return; }
+          toast('Sending…');
+          const n = await LB.flush();
+          toast(LB.lastError ? LB.lastError : n ? `Sent ${n} play${n === 1 ? '' : 's'}` : 'Nothing to send');
+          break;
+        }
+        case 'recs':
+          if (!navigator.onLine) { toast('Connect to Wi-Fi first'); return; }
+          stack.push(lbRecsPage());
+          break;
+        case 'off': {
+          const c = await sheet('Disconnect ListenBrainz?', [{ label: 'Disconnect', ok: true }, { label: 'Cancel' }]);
+          if (c && c.ok) { LB.disconnect(); toast('Disconnected'); }
+          break;
+        }
+        case 'how': toast('See the README for setup'); break;
+      }
+    },
+    softkeys: () => ({ c: 'Select' }),
+  });
+  const fn = () => { page.reload(true); };
+  LB.lb.addEventListener('change', fn);
+  page.o.onDestroy = () => LB.lb.removeEventListener('change', fn);
+  return page;
+}
+
+function lbRecsPage() {
+  let lists = null;
+  const page = new ListPage({
+    title: 'Recommendations', kind: 'song', rowH: 38, twoLine: true,
+    emptyText: 'Loading…',
+    items: () => (lists || []).map((p) => ({ id: p.id, label: p.title.replace(/ for \S+.*$/, '') || p.title, sub: p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '', chevron: true, pl: p })),
+    onEnter: (it) => stack.push(lbTracksPage(it.pl)),
+  });
+  LB.recommendationPlaylists().then((l) => {
+    lists = l;
+    page.lv.o.emptyText = 'No playlists yet. ListenBrainz makes them weekly once it knows your taste.';
+    page.reload(false);
+  }, () => { page.lv.o.emptyText = 'Could not load recommendations'; page.reload(false); });
+  return page;
+}
+
+const norm = (x) => (x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+function findLocal(t) {
+  const ti = norm(t.title);
+  const ar = norm(t.artist).split(' ')[0];
+  return library.tracks.find((x) => norm(x.title) === ti && norm(x.artist).includes(ar));
+}
+
+function lbTracksPage(pl) {
+  let tracks = null;
+  const page = new ListPage({
+    title: pl.title.replace(/ for \S+.*$/, '') || 'Playlist', kind: 'song', rowH: 38, twoLine: true, thumbs: true,
+    emptyText: 'Loading…',
+    items: () => (tracks || []).map((t, i) => {
+      const local = findLocal(t);
+      return { id: 'r' + i, label: t.title, sub: local ? `${t.artist} · in your library` : t.artist, art: local ? local.art : null, seed: t.artist, playing: false, local, dim: !local };
+    }),
+    onEnter: (it) => {
+      if (!it.local) { toast('Not in your library yet'); return; }
+      const owned = page.lv.items.filter((x) => x.local).map((x) => x.local.id);
+      player.playList(owned, owned.indexOf(it.local.id), { shuffle: false });
+      openNowPlaying();
+    },
+    softkeys: () => ({ c: 'Play' }),
+  });
+  LB.playlistTracks(pl.id).then((t) => { tracks = t; page.lv.o.emptyText = 'Empty playlist'; page.reload(false); },
+    () => { page.lv.o.emptyText = 'Could not load this playlist'; page.reload(false); });
   return page;
 }
