@@ -4,6 +4,8 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 
 <img src="art/icon-256.png" width="96" alt="Flippod icon">
 
+![Screens](art/screens.png)
+
 ## Features
 
 - **Library**: Artists, Albums, Songs, Genres, Folders, Recently Added, Favorites and Most Played, built from your tags. It reads ID3v2.2–2.4, ID3v1, MP4/M4A, FLAC and Ogg/Opus, plus embedded or folder cover art.
