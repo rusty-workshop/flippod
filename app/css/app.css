@@ -207,19 +207,19 @@ body { font-family: "Open Sans", "Noto Sans CJK JP", "Noto Sans CJK SC", "Droid 
 .np-bg img { position: absolute; left: -30px; top: -30px; width: calc(100% + 60px); height: calc(100% + 60px); opacity: 0; transition: opacity .8s ease; filter: blur(10px) saturate(1.35); }
 .np-bg img.on { opacity: 1; }
 .np-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0.72)); }
-.np-stage { position: absolute; top: 9px; left: 50%; width: 116px; height: 116px; margin-left: -58px; perspective: 520px; transform-origin: 50% 55%; will-change: transform; }
+.np-stage { position: absolute; top: 11px; left: 50%; width: 132px; height: 132px; margin-left: -66px; perspective: 520px; transform-origin: 50% 55%; will-change: transform; }
 .np-cover { position: absolute; inset: 0; will-change: transform, opacity; }
 .np-cover.off { visibility: hidden; }
-.np-art { position: absolute; inset: 0; width: 116px; height: 116px; border-radius: 6px; box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.np-art { position: absolute; inset: 0; width: 132px; height: 132px; border-radius: 6px; box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .np-glow { position: absolute; left: 8px; right: 8px; top: 30px; bottom: -14px; border-radius: 30px; background: rgb(var(--np-r), var(--np-g), var(--np-b)); filter: blur(16px); opacity: .7; transition: background-color .8s ease; }
 .np-ref { display: none; }
-.np-info { position: absolute; top: 150px; left: 10px; right: 10px; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.np-info { position: absolute; top: 156px; left: 10px; right: 10px; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .np-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 18px; }
 .np-title span { display: inline-block; }
 .np-title.mq { text-overflow: clip; }
 .np-artist { font-size: 12px; font-weight: 600; opacity: .88; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 16px; }
 .np-album { font-size: 11px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 15px; }
-.np-prog { position: absolute; left: 8px; right: 8px; top: 203px; display: flex; align-items: center; gap: 6px; }
+.np-prog { position: absolute; left: 8px; right: 8px; top: 216px; display: flex; align-items: center; gap: 6px; }
 .np-time { width: 32px; flex: none; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; }
 .np-time.r { text-align: right; }
 .np-bar { position: relative; flex: 1; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.22); transition: transform .2s ease; }
@@ -240,12 +240,12 @@ body { font-family: "Open Sans", "Noto Sans CJK JP", "Noto Sans CJK SC", "Droid 
 /* ---------- album shelf ---------- */
 .page.shelf { background: radial-gradient(ellipse at 50% 30%, #2b2b33 0%, #0d0d10 62%); color: #fff; }
 .shelf-cap, .shelf-n { z-index: 201; }
-.shelf-stage { position: absolute; left: 50%; top: 16px; width: 0; height: 104px; }
+.shelf-stage { position: absolute; left: 50%; top: 24px; width: 0; height: 104px; }
 .shelf-cov { position: absolute; left: -52px; top: 0; width: 104px; height: 104px; will-change: transform; transition: transform .42s cubic-bezier(.2, .85, .25, 1), opacity .3s ease; }
 .shelf-art { position: absolute; inset: 0; width: 104px; height: 104px; border-radius: 3px; outline: 1px solid rgba(255, 255, 255, 0.07); outline-offset: -1px; }
 .shelf-ref { position: absolute; left: 0; top: 106px; width: 104px; height: 104px; transform: scaleY(-1); opacity: .3; }
-.shelf-floor { position: absolute; left: 0; right: 0; top: 122px; bottom: 0; z-index: 200; background: linear-gradient(rgba(13, 13, 16, 0.05), rgba(13, 13, 16, 0.75) 22%, #0d0d10 40%); pointer-events: none; }
-.shelf-cap { position: absolute; left: 10px; right: 10px; top: 168px; text-align: center; }
+.shelf-floor { position: absolute; left: 0; right: 0; top: 130px; bottom: 0; z-index: 200; background: linear-gradient(rgba(13, 13, 16, 0.05), rgba(13, 13, 16, 0.75) 22%, #0d0d10 40%); pointer-events: none; }
+.shelf-cap { position: absolute; left: 10px; right: 10px; top: 184px; text-align: center; }
 .shelf-t { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .shelf-a { font-size: 11px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
 .shelf-n { position: absolute; bottom: 7px; left: 0; right: 0; text-align: center; font-size: 10px; opacity: .45; font-weight: 600; font-variant-numeric: tabular-nums; }
