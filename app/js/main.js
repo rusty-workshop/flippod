@@ -7,6 +7,10 @@ import { MainMenu, bindStack, openNowPlaying } from './views.js';
 
 window.FLIPPOD_VERSION = '1.0.0';
 const HOME = /^launcher\./.test(location.hostname);
+// The KaiOS system app treats a homescreen URL with no hash (or #mainView) as the stock
+// launcher's main view and hijacks Up (Instant Settings), SoftLeft (notifications) and
+// long-Back (sleep menu). Any other hash tells it to leave our keys alone.
+if (HOME && location.hash !== '#flippod') location.hash = 'flippod';
 const app = document.getElementById('app');
 
 // ---------- theme ----------
