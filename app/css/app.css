@@ -291,3 +291,14 @@ body { font-family: "Open Sans", "Noto Sans CJK JP", "Noto Sans CJK SC", "Droid 
 .splash-disc { width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle, #000 0 9px, #1b1b20 10px 100%); }
 .splash-name { color: #fff; font-size: 17px; font-weight: 300; letter-spacing: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- T9 search ---------- */
+.page.search { display: flex; flex-direction: column; }
+.srch-box { height: 46px; flex: none; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--sheet-bg); overflow: hidden; }
+.srch-keys { display: flex; gap: 4px; overflow: hidden; }
+.srch-k { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 22px; height: 32px; padding: 0 3px; border-radius: 7px; background: linear-gradient(var(--a1), var(--a2)); color: #fff; animation: srchpop .18s cubic-bezier(.2, .85, .25, 1); }
+.srch-k b { font-size: 13px; line-height: 14px; }
+.srch-k i { font-style: normal; font-size: 8px; line-height: 10px; opacity: .85; text-transform: uppercase; }
+.srch-k.sp { background: var(--line); color: var(--sub); }
+.srch-hint { color: var(--sub); font-size: 12px; }
+@keyframes srchpop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }

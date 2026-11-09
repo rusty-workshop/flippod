@@ -295,6 +295,7 @@ export class MainMenu {
   reload() {
     const items = [
       { id: 'music', label: 'Music', chevron: true },
+      { id: 'search', label: 'Search', chevron: true },
       { id: 'playlists', label: 'Playlists', chevron: true },
       { id: 'shelf', label: 'Album Shelf' },
       { id: 'shuffle', label: 'Shuffle Songs' },
@@ -310,6 +311,7 @@ export class MainMenu {
   enter(it) {
     switch (it.id) {
       case 'music': stack.push(musicPage()); break;
+      case 'search': openSearch(); break;
       case 'playlists': stack.push(playlistsPage()); break;
       case 'shelf': if (library.albums.length) stack.push(new ShelfPage(0)); else toast('No albums yet'); break;
       case 'shuffle':
@@ -1132,6 +1134,7 @@ function lbPage() {
         { id: 'q', label: 'Waiting to send', sub: `${n} play${n === 1 ? '' : 's'}${LB.lastError ? ' · ' + LB.lastError : LB.lastSent ? ' · all caught up' : ''}` },
         { id: 'send', label: 'Send now', sub: navigator.onLine ? 'Upload queued plays' : 'Needs Wi-Fi' },
         { id: 'recs', label: 'Recommendations', sub: 'Playlists made for you', chevron: true },
+        { id: 'wish', label: 'Wishlist', sub: `${wishlist().length} song${wishlist().length === 1 ? '' : 's'} to download`, chevron: true },
         { id: 'off', label: 'Disconnect', sub: 'Forget the token on this phone', dim: true },
       ];
     },
@@ -1144,6 +1147,7 @@ function lbPage() {
           toast(LB.lastError ? LB.lastError : n ? `Sent ${n} play${n === 1 ? '' : 's'}` : 'Nothing to send');
           break;
         }
+        case 'wish': stack.push(wishlistPage()); break;
         case 'recs':
           if (!navigator.onLine) { toast('Connect to Wi-Fi first'); return; }
           stack.push(lbRecsPage());
@@ -1188,26 +1192,66 @@ function findLocal(t) {
   return library.tracks.find((x) => norm(x.title) === ti && norm(x.artist).includes(ar));
 }
 
+// ---------- wishlist (songs to download on the laptop with flippod-sync) ----------
+const wkey = (t) => `${norm(t.artist)}|${norm(t.title)}`;
+const wishlist = () => settings.get('wishlist') || [];
+const onWishlist = (t) => wishlist().some((w) => wkey(w) === wkey(t));
+function toggleWish(t) {
+  const list = wishlist();
+  if (onWishlist(t)) { settings.set('wishlist', list.filter((w) => wkey(w) !== wkey(t))); toast('Removed from wishlist'); return false; }
+  settings.set('wishlist', [...list, { title: t.title, artist: t.artist, album: t.album || '', dur: t.dur || 0, added: Date.now() }]);
+  toast('Added to wishlist');
+  return true;
+}
+
 function lbTracksPage(pl) {
   let tracks = null;
   const page = new ListPage({
     title: pl.title.replace(/ for \S+.*$/, '') || 'Playlist', kind: 'song', rowH: 38, twoLine: true, thumbs: true,
     emptyText: 'Loading…',
+    dynamic: true,
     items: () => (tracks || []).map((t, i) => {
       const local = findLocal(t);
-      return { id: 'r' + i, label: t.title, sub: local ? `${t.artist} · in your library` : t.artist, art: local ? local.art : null, seed: t.artist, playing: false, local, dim: !local };
+      const wished = !local && onWishlist(t);
+      return { id: 'r' + i, label: (wished ? '★ ' : '') + t.title, sub: local ? `${t.artist} · in your library` : wished ? `${t.artist} · on your wishlist` : t.artist, art: local ? local.art : null, seed: t.artist, playing: false, local, dim: !local && !wished, t };
     }),
     onEnter: (it) => {
-      if (!it.local) { toast('Not in your library yet'); return; }
+      if (!it.local) { toast('Not in your library yet. Right key: wishlist'); return; }
       const owned = page.lv.items.filter((x) => x.local).map((x) => x.local.id);
       player.playList(owned, owned.indexOf(it.local.id), { shuffle: false });
       openNowPlaying();
     },
-    softkeys: () => ({ c: 'Play' }),
+    onRight: (pg) => {
+      const it = pg.lv.selected;
+      if (!it) return;
+      if (it.local) { toast('Already in your library'); return; }
+      toggleWish(it.t);
+      pg.reload(true);
+      stack.softkeys();
+    },
+    softkeys: (pg) => {
+      const it = pg.lv && pg.lv.selected;
+      if (!it) return { c: 'Play' };
+      if (it.local) return { c: 'Play' };
+      return { c: '', r: onWishlist(it.t) ? 'Unwish' : 'Wishlist' };
+    },
   });
-  LB.playlistTracks(pl.id).then((t) => { tracks = t; page.lv.o.emptyText = 'Empty playlist'; page.reload(false); },
+  LB.playlistTracks(pl.id).then((t) => { tracks = t; page.lv.o.emptyText = 'Empty playlist'; page.reload(false); stack.softkeys(); },
     () => { page.lv.o.emptyText = 'Could not load this playlist'; page.reload(false); });
   return page;
+}
+
+function wishlistPage() {
+  return new ListPage({
+    title: 'Wishlist', kind: 'song', rowH: 38, twoLine: true, dynamic: true,
+    emptyText: 'Star songs in Recommendations, then run flippod-sync --wishlist on your computer',
+    items: () => wishlist().map((w, i) => ({ id: 'w' + i, label: w.title, sub: w.artist, w })),
+    onEnter: () => toast('Downloads next time you run flippod-sync'),
+    options: async (it, pg) => {
+      await sheet(it.label, [{ label: 'Remove from Wishlist', run: () => { toggleWish(it.w); pg.reload(true); } }]);
+    },
+    softkeys: () => ({ r: 'Options' }),
+  });
 }
 
 // ---------- Wi-Fi ----------
@@ -1346,4 +1390,124 @@ function wifiSavedPage() {
   load();
   watchWifi(page);
   return page;
+}
+
+// ---------- T9 search ----------
+const T9MAP = (() => {
+  const m = {};
+  const keys = { 2: 'abc', 3: 'def', 4: 'ghi', 5: 'jkl', 6: 'mno', 7: 'pqrs', 8: 'tuv', 9: 'wxyz' };
+  for (const [d, letters] of Object.entries(keys)) for (const c of letters) m[c] = d;
+  for (let d = 0; d <= 9; d++) m[String(d)] = String(d);
+  return m;
+})();
+const T9LETTERS = { 1: '1', 2: 'abc', 3: 'def', 4: 'ghi', 5: 'jkl', 6: 'mno', 7: 'pqrs', 8: 'tuv', 9: 'wxyz' };
+
+function t9words(name) {
+  return (name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/).filter(Boolean).map((w) => [...w].map((c) => T9MAP[c] || '').join(''));
+}
+
+let t9index = null;
+function buildT9() {
+  const idx = [];
+  for (const ar of library.artists) idx.push({ type: 'artist', name: ar.name, words: t9words(ar.name), ar });
+  for (const al of library.albums) idx.push({ type: 'album', name: al.title, words: t9words(al.title), al });
+  for (const t of library.songs) idx.push({ type: 'song', name: t.title, words: t9words(t.title).concat(t9words(t.artist)), t, own: t9words(t.title).length });
+  t9index = idx;
+}
+library.addEventListener('change', () => { t9index = null; });
+
+// Each 0-separated token must prefix-match a word, in order. Lower score = better.
+function t9score(entry, tokens) {
+  let wi = 0;
+  let first = -1;
+  for (const tok of tokens) {
+    while (wi < entry.words.length && !entry.words[wi].startsWith(tok)) wi++;
+    if (wi >= entry.words.length) return -1;
+    if (first < 0) first = wi;
+    wi++;
+  }
+  // songs also match on artist words; rank title matches above artist-only matches
+  const artistOnly = entry.own != null && first >= entry.own ? 2 : 0;
+  return first + artistOnly + entry.name.length / 1000;
+}
+
+class SearchPage {
+  constructor() {
+    this.title = 'Search';
+    this.q = '';
+    this.el = h('div', 'page search');
+    this.box = h('div', 'srch-box');
+    this.keys = h('div', 'srch-keys');
+    this.hint = h('div', 'srch-hint', 'Type with the keypad · 0 = next word');
+    this.box.append(this.keys, this.hint);
+    this.lv = new ListView({
+      kind: 'song', rowH: 38, twoLine: true, thumbs: true,
+      emptyText: 'Start typing',
+      onEnter: (it) => this.open(it),
+    });
+    this.el.append(this.box, this.lv.el);
+    if (!t9index) buildT9();
+  }
+
+  mount(height) { this.lv.resize(height - 46); }
+  show() {}
+
+  update() {
+    this.keys.textContent = '';
+    for (const d of this.q) {
+      const k = h('span', d === '0' ? 'srch-k sp' : 'srch-k');
+      k.append(h('b', '', d === '0' ? '␣' : d), h('i', '', d === '0' ? '' : T9LETTERS[d] || ''));
+      this.keys.appendChild(k);
+    }
+    this.hint.style.display = this.q ? 'none' : '';
+    const tokens = this.q.split('0').filter(Boolean);
+    let items = [];
+    if (tokens.length) {
+      const hits = [];
+      for (const e of t9index) { const sc = t9score(e, tokens); if (sc >= 0) hits.push([sc, e]); }
+      hits.sort((a, b) => a[0] - b[0]);
+      const pick = (type, n) => hits.filter(([, e]) => e.type === type).slice(0, n).map(([, e]) => e);
+      const fmt = {
+        artist: (e) => ({ id: 'a:' + e.ar.key, label: e.ar.name, sub: `Artist · ${plural(e.ar.tracks.length, 'song')}`, art: e.ar.art, seed: e.ar.name, chevron: true, e }),
+        album: (e) => ({ id: 'l:' + e.al.key, label: e.al.title, sub: `Album · ${e.al.artist}`, art: e.al.art, seed: e.al.title, chevron: true, e }),
+        song: (e) => ({ id: 's:' + e.t.id, label: e.t.title, sub: e.t.artist || 'Unknown Artist', art: e.t.art, seed: e.t.album, e }),
+      };
+      items = [...pick('artist', 4).map(fmt.artist), ...pick('album', 6).map(fmt.album), ...pick('song', 60).map(fmt.song)];
+    }
+    this.lv.o.emptyText = this.q ? 'No matches' : 'Start typing';
+    this.lv.setItems(items);
+    stack && stack.top === this && stack.softkeys();
+  }
+
+  open(it) {
+    const e = it.e;
+    if (e.type === 'artist') stack.push(artistPage(e.ar));
+    else if (e.type === 'album') stack.push(albumPage(e.al));
+    else {
+      const songs = this.lv.items.filter((x) => x.e.type === 'song').map((x) => x.e.t.id);
+      player.playList(songs, songs.indexOf(e.t.id), { shuffle: false });
+      openNowPlaying();
+    }
+  }
+
+  softkeys() { return { l: this.q ? 'Clear' : '', c: this.lv.items.length ? 'Open' : '' }; }
+
+  onKey(e) {
+    if (/^[0-9]$/.test(e.key)) {
+      if (e.key === '0' && (!this.q || this.q.endsWith('0'))) return true;
+      if (this.q.length < 24) { this.q += e.key; click(); this.update(); }
+      return true;
+    }
+    if (e.key === 'Backspace' && this.q) { this.q = this.q.slice(0, -1); this.update(); return true; }
+    if (e.key === 'SoftLeft' && this.q) { this.q = ''; this.update(); return true; }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return this.lv.onKey(e);
+    return false;
+  }
+  keyUp() { this.lv.keyUp(); }
+}
+
+export function openSearch() {
+  if (stack.top instanceof SearchPage) return;
+  stack.push(new SearchPage());
 }

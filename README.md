@@ -22,6 +22,7 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 - **Wi-Fi**: *Settings → Wi-Fi* turns it on/off, scans and joins networks (T9 password entry), and joins or forgets saved ones.
 - **Bluetooth**: *Settings → Bluetooth* turns it on/off, pairs new devices, and connects, disconnects or forgets paired ones (KaiOS's own quick settings aren't reachable from Flippod).
 - **Bluetooth song info**: the current song and play state go to connected Bluetooth devices, so car stereos and headphones can show the title and artist.
+- **T9 search**: press # anywhere and type on the keypad to find artists, albums and songs as you type.
 - **ListenBrainz**: scrobbles what you play (queued while offline, sent over Wi-Fi) and shows your weekly *Recommendations* playlists, with songs you already own playable straight from the list.
 - **Themes**: Classic, Midnight and Album Color, with six accent colors.
 
@@ -41,6 +42,7 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 | Now Playing | Down | Show / hide synced lyrics |
 | Album Shelf | Left / Right | Browse (Enter opens, right softkey plays) |
 | Anywhere | Call | Jump to Now Playing |
+| Anywhere | # | Search (type with T9, 0 = next word) |
 
 ## Putting music on the phone
 
@@ -52,6 +54,8 @@ Copy music into the phone's **`music`** folder (`/data/media/music`, which the p
 Flippod picks up new files on its own, or you can use *Settings → Rescan Library*.
 
 **Easiest:** `tools/flippod-sync` (copy it into `~/.local/bin` if you like). It fetches synced lyrics from [LRCLIB](https://lrclib.net) as `.lrc` files next to your songs, copies only new or changed music, playlists and lyrics to the phone, and tells Flippod to rescan. Use `--dry-run` to preview, and `--delete` to also remove songs from the phone that you deleted on the laptop.
+
+**Wishlist:** star songs you don't own on a ListenBrainz Recommendations playlist (right softkey). The next `flippod-sync` downloads them with `yt-dlp` into `~/Music/Wishlist` as tagged MP3s with cover art, preferring the official "Artist - Topic" audio, then syncs them and clears them from the wishlist. Skip with `--no-wishlist`.
 
 ## Install
 

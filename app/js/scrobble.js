@@ -135,7 +135,7 @@ export async function recommendationPlaylists() {
 
 export async function playlistTracks(id) {
   const r = await call(`/playlist/${id}`);
-  return (r.playlist.track || []).map((t) => ({ title: t.title, artist: t.creator, album: t.album || '' }));
+  return (r.playlist.track || []).map((t) => ({ title: t.title, artist: t.creator, album: t.album || '', dur: t.duration ? Math.round(t.duration / 1000) : 0 }));
 }
 
 export function initScrobble() {

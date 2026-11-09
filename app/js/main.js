@@ -3,7 +3,7 @@ import { library, warmThumbs } from './library.js';
 import { scan, storage } from './scanner.js';
 import { player } from './player.js';
 import { settings } from './settings.js';
-import { MainMenu, bindStack, openNowPlaying } from './views.js';
+import { MainMenu, bindStack, openNowPlaying, openSearch } from './views.js';
 import { initOuter } from './outer.js';
 import * as BT from './bt.js';
 import { initAvrcp } from './avrcp.js';
@@ -95,6 +95,10 @@ window.addEventListener('keydown', (e) => {
     case 'EndCall':
     case 'Home':
       if (HOME && stack.depth > 1) { e.preventDefault(); stack.popToRoot(); }
+      break;
+    case '#':
+      e.preventDefault();
+      openSearch();
       break;
     case 'Call':
       if (player.current) { e.preventDefault(); openNowPlaying(); }

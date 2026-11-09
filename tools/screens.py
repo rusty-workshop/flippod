@@ -37,8 +37,8 @@ nav('await ent(s.top.lv.items.length-1);', 1500); shot('nowplaying')
 r.eval(app, '(async()=>{__fp.settings.set("lyricsView",true);const np=__fp.stack.top;np._applyLyrMode();np.lineIdx=-2;np.tick(true);await new Promise(r=>setTimeout(r,900));return 1})()')
 shot('lyrics')
 r.eval(app, '__fp.settings.set("lyricsView",false);1')
-nav('await ent(2);s.top.go(30);', 1400); shot('shelf')
-nav('await ent(5);await ent(0);', 1200); shot('bluetooth')
+nav('await ent(3);s.top.go(30);', 1400); shot('shelf')
+nav('await ent(6);await ent(1);', 1200); shot('bluetooth')
 nav('s.top.lv.select(0,false);', 300)
 
 OUTER = r'''(async()=>{const ws=[];const e=Services.wm.getEnumerator(null);while(e.hasMoreElements())ws.push(e.getNext());

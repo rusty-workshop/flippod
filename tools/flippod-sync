@@ -6,10 +6,14 @@
   flippod-sync --dry-run            # show what would happen
   flippod-sync --no-lyrics          # skip the lyrics lookup
   flippod-sync --delete             # also remove phone files that are no longer on the laptop
+  flippod-sync --no-wishlist        # don't download songs starred on the phone
+
+Songs you star on the phone (Settings → ListenBrainz → Recommendations) are downloaded first with yt-dlp
+into ~/Music/Wishlist as tagged MP3s with cover art, then synced like everything else.
 
 Lyrics come from LRCLIB (https://lrclib.net) and are saved as .lrc files next to each song on the laptop,
 so they are fetched only once. Songs with no synced lyrics are remembered and retried after 30 days.
-Needs adb (with `adb root`) and ffprobe.
+Needs adb (with `adb root`), ffmpeg/ffprobe, and yt-dlp for the wishlist.
 """
 import argparse, json, os, shlex, subprocess, sys, time, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -137,6 +141,113 @@ def fetch_lyrics(files, dry):
     return found
 
 
+# ---------- wishlist ----------
+def flippod_rdp():
+    tools = Path(__file__).resolve().parent
+    sys.path.insert(0, str(tools))
+    from rdp import RDP
+    adb('forward', 'tcp:6000', 'localfilesystem:/data/local/firefox-debugger-socket')
+    r = RDP()
+    host = 'launcher.localhost' if any('launcher.localhost' in (t.get('url') or '') for t in r.tabs()) else 'flippod.localhost'
+    return r, r.target(host)
+
+
+def safe_name(s):
+    return ''.join('_' if c in '/\\\0' else c for c in s).strip()[:150]
+
+
+def pick_video(artist, title, dur=0):
+    """Search YouTube; prefer the auto-generated 'Artist - Topic' upload (official audio, square cover art)."""
+    q = f'ytsearch6:{artist} {title}'
+    out = subprocess.run(['yt-dlp', '--flat-playlist', '-J', '--no-warnings', q], capture_output=True, text=True)
+    try:
+        entries = json.loads(out.stdout).get('entries') or []
+    except ValueError:
+        return None
+    norm = lambda x: ''.join(c for c in (x or '').lower() if c.isalnum())
+    want = norm(title)
+    def score(e):
+        s = 0
+        if (e.get('channel') or e.get('uploader') or '').endswith(' - Topic'):
+            s += 10
+        if want and want in norm(e.get('title')):
+            s += 5
+        if norm(artist) and norm(artist) in norm((e.get('channel') or '') + (e.get('title') or '')):
+            s += 2
+        d = e.get('duration') or 0
+        if d > 900:  # skip hour-long mixes
+            s -= 20
+        if dur and d:  # ListenBrainz gave us the real length: prefer a close match
+            s -= min(abs(d - dur), 120) / 6
+        return s
+    entries = [e for e in entries if e.get('id')]
+    return max(entries, key=score) if entries else None
+
+
+def download_song(w, dest):
+    target = dest / f"{safe_name(w['artist'])} - {safe_name(w['title'])}.mp3"
+    if target.exists():
+        return target
+    v = pick_video(w['artist'], w['title'], w.get('dur') or 0)
+    if not v:
+        return None
+    tmp = dest / '.downloading'
+    tmp.mkdir(parents=True, exist_ok=True)
+    raw = tmp / f"{v['id']}.mp3"
+    r = subprocess.run(['yt-dlp', '-q', '--no-warnings', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', '0',
+                        '--embed-thumbnail', '--convert-thumbnails', 'jpg',
+                        '--ppa', 'ThumbnailsConvertor+FFmpeg_o:-c:v mjpeg -vf crop=ih:ih',
+                        '-o', str(tmp / '%(id)s.%(ext)s'), f"https://www.youtube.com/watch?v={v['id']}"], capture_output=True, text=True)
+    if r.returncode != 0 or not raw.exists():
+        return None
+    meta = ['-metadata', f"title={w['title']}", '-metadata', f"artist={w['artist']}",
+            '-metadata', f"comment=youtube:{v['id']} via Flippod wishlist"]
+    if w.get('album'):
+        meta += ['-metadata', f"album={w['album']}"]
+    r = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(raw), '-map', '0', '-c', 'copy', '-map_metadata', '-1', *meta,
+                        '-id3v2_version', '3', str(target)], capture_output=True, text=True)
+    raw.unlink(missing_ok=True)
+    for leftover in tmp.glob(f"{v['id']}.*"):
+        leftover.unlink(missing_ok=True)
+    try:
+        tmp.rmdir()
+    except OSError:
+        pass
+    return target if r.returncode == 0 and target.exists() else None
+
+
+def fetch_wishlist(dest, dry):
+    try:
+        r, tab = flippod_rdp()
+        items = json.loads(r.eval(tab, "JSON.stringify(__fp.settings.get('wishlist') || [])") or '[]')
+    except Exception as e:
+        print(f'Wishlist: could not read it from the phone ({e}).')
+        return
+    if not items:
+        print('Wishlist: empty.')
+        return
+    print(f'Wishlist: {len(items)} song(s) to download into {dest}')
+    if dry:
+        for w in items:
+            print(f"  ★ {w['artist']} - {w['title']}")
+        return
+    if subprocess.run(['which', 'yt-dlp'], capture_output=True).returncode != 0:
+        print('  yt-dlp is not installed, skipping.')
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    done = []
+    for i, w in enumerate(items, 1):
+        print(f"  [{i}/{len(items)}] {w['artist']} - {w['title']} ... ", end='', flush=True)
+        f = download_song(w, dest)
+        print('ok' if f else 'not found')
+        if f:
+            done.append(w)
+    if done:
+        keys = json.dumps([[d['artist'], d['title']] for d in done])
+        r.eval(tab, "(()=>{const done=%s.map(x=>x.join('|'));__fp.settings.set('wishlist',(__fp.settings.get('wishlist')||[]).filter(w=>!done.includes(w.artist+'|'+w.title)));return 1})()" % keys)
+        print(f'Wishlist: downloaded {len(done)}, cleared them from the phone.')
+
+
 # ---------- sync ----------
 def phone_files():
     out = adb('shell', f"cd {PHONE_DIR} 2>/dev/null && find . -type f -exec stat -c '%s|%n' {{}} +", check=False)
@@ -169,6 +280,8 @@ def main():
     ap.add_argument('--no-lyrics', action='store_true')
     ap.add_argument('--delete', action='store_true', help='remove phone files that are not on the laptop')
     ap.add_argument('--videos', action='store_true', help='also copy .mp4/.webm files')
+    ap.add_argument('--no-wishlist', action='store_true', help="don't download songs starred on the phone")
+    ap.add_argument('--wishlist-dir', default=str(Path.home() / 'Music' / 'Wishlist'))
     a = ap.parse_args()
 
     src = Path(a.source).expanduser().resolve()
@@ -184,10 +297,13 @@ def main():
     adb('root', check=False)
     adb('wait-for-device')
 
-    local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos)]
+    if not a.no_wishlist:
+        fetch_wishlist(Path(a.wishlist_dir).expanduser(), a.dry_run)
+
+    local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos) and '.downloading' not in p.parts]
     if not a.no_lyrics:
         fetch_lyrics(local, a.dry_run)
-        local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos)]
+        local = [p for p in src.rglob('*') if p.is_file() and wanted(p, a.videos) and '.downloading' not in p.parts]
 
     remote = phone_files()
     rel = {str(p.relative_to(base)): p for p in local}
