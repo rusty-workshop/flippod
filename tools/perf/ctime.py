@@ -2,6 +2,7 @@
 """Run JS in Flippod while recording compositor frame intervals on the main screen window.
 Usage: ctime.py '<js that returns a promise or value>' """
 import sys, json
+import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from rdp import RDP
 from wake import wake
 r = RDP(); wake(r)

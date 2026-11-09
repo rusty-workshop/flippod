@@ -1,5 +1,7 @@
 # Flippod
 
+**Website:** https://rusty-workshop.github.io/flippod/
+
 A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for the keypad and a 240×320 screen.
 
 <img src="art/icon-256.png" width="96" alt="Flippod icon">
@@ -51,7 +53,7 @@ Flippod picks up new files on its own, or you can use *Settings → Rescan Libra
 
 ## Install
 
-Requirements: a TCL Flip 4 with `adb root` (see [tcl-flip-4-root](../tcl-flip-4-root)).
+Requirements: a TCL Flip 4 with `adb root` (see [tcl-flip-4-root](https://github.com/ambercaravalho/tcl-flip-4-root)).
 
 ```bash
 tools/deploy.sh          # build + install/update the app
@@ -74,6 +76,7 @@ The outer screen is the system app's `index_remote.html`, which is served from t
 - `tools/wake.py`: wake the screen / release the dev wake lock
 - `tools/gen-apps.py`: regenerate the Apps list from the phone
 - `tools/test-tags.mjs`: run the tag reader against a folder on the laptop
+- `tools/perf/`: frame-time benchmarks used while tuning animations
 
 ## Notes and limits
 

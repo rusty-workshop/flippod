@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flippod</title>
+<meta name="description" content="A music player and home screen for the TCL Flip 4 5G, built for the keypad, the lid screen and KaiOS 4.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --card: #15151e;
+  --line: rgba(255, 255, 255, 0.08);
+  --fg: #f2f2f7;
+  --sub: #9a9aab;
+  --blue: #5cb0ff;
+  --violet: #b39aff;
+  --pink: #ff7fb3;
+  --amber: #ffb75a;
+  --mint: #4fe6bb;
+  --ring: conic-gradient(from 210deg, var(--blue), var(--violet), var(--pink), var(--amber), var(--blue));
+  --grad: linear-gradient(100deg, var(--blue), var(--violet) 35%, var(--pink) 70%, var(--amber));
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 500 17px/1.6 Manrope, system-ui, sans-serif; overflow-x: hidden; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { font-family: Unbounded, sans-serif; line-height: 1.1; margin: 0; letter-spacing: -0.01em; }
+code, pre { font-family: "JetBrains Mono", monospace; }
+.wrap { width: min(1120px, 100% - 32px); margin: 0 auto; }
+.grad-text { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+/* ---------- nav ---------- */
+nav { position: fixed; inset: 0 0 auto; z-index: 50; backdrop-filter: blur(12px); background: rgba(10, 10, 15, 0.6); border-bottom: 1px solid var(--line); }
+nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: Unbounded; font-weight: 700; color: var(--fg); }
+.brand img { width: 30px; height: 30px; }
+nav .links { margin-left: auto; display: flex; gap: 20px; font-size: 15px; }
+nav .links a { color: var(--sub); }
+nav .links a:hover { color: var(--fg); text-decoration: none; }
+.gh { padding: 7px 14px; border-radius: 999px; background: var(--fg); color: var(--bg) !important; font-weight: 700; }
+@media (max-width: 720px) { nav .links a:not(.gh) { display: none; } }
+
+/* ---------- hero (scroll-driven flip) ---------- */
+.hero { height: 230vh; position: relative; }
+.hero-stick { position: sticky; top: 0; height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 30px; padding-top: 58px; }
+.hero-copy .eyebrow { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--sub); font-size: 14px; }
+.hero-copy .eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+.hero-copy h1 { font-size: clamp(46px, 7.4vw, 92px); font-weight: 800; margin: 18px 0 16px; }
+.hero-copy p { font-size: 19px; color: var(--sub); max-width: 32ch; margin: 0 0 26px; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 20px; border-radius: 14px; font-weight: 700; border: 1px solid var(--line); color: var(--fg); background: var(--card); }
+.btn.primary { border: 0; background: var(--grad); color: #111; }
+.btn:hover { text-decoration: none; transform: translateY(-1px); }
+.scroll-hint { margin-top: 30px; color: var(--sub); font-size: 14px; opacity: calc(1 - var(--open, 0) * 3); }
+
+.stage { position: relative; height: 640px; perspective: 1400px; display: flex; justify-content: center; align-items: center; }
+.glow { position: absolute; width: 440px; height: 440px; border-radius: 50%; background: var(--ring); filter: blur(90px); opacity: .35; }
+.phone { position: relative; width: 250px; transform-style: preserve-3d; transform: translateY(calc(var(--open, 0) * 150px)) rotateX(calc(14deg - var(--open, 0) * 10deg)) rotateY(calc(-18deg + var(--open, 0) * 14deg)); }
+.half { position: relative; width: 250px; height: 300px; border-radius: 30px; background: linear-gradient(160deg, #2e2e38, #17171d 60%, #101015); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 30px 60px rgba(0, 0, 0, 0.5); }
+.base { display: flex; flex-direction: column; align-items: center; padding-top: 26px; gap: 12px; border-radius: 22px 22px 34px 34px; transform: translateZ(-3px); }
+.lid { position: absolute; left: 0; bottom: 100%; transform-origin: 50% 100%; transform-style: preserve-3d; transform: rotateX(calc(-180deg + var(--open, 0) * 180deg)); border-radius: 34px 34px 22px 22px; background: none; box-shadow: none; }
+.lid .face { position: absolute; inset: 0; border-radius: inherit; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 30px 60px rgba(0, 0, 0, 0.5); }
+.lid .inside { background: linear-gradient(160deg, #24242c, #111116); }
+.lid .outside { transform: rotateY(180deg) rotateZ(180deg); background: linear-gradient(160deg, #34343f, #1a1a21); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15); }
+.screen { width: 206px; height: 258px; border-radius: 10px; overflow: hidden; background: #000; box-shadow: 0 0 0 3px #08080b, 0 0 0 4px rgba(255, 255, 255, 0.06); }
+.screen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mini { width: 112px; height: 140px; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 3px #08080b; }
+.mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dpad { width: 86px; height: 52px; border-radius: 26px; background: linear-gradient(#3a3a46, #24242c); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); display: flex; align-items: center; justify-content: center; }
+.dpad i { width: 30px; height: 22px; border-radius: 9px; background: #15151b; }
+.keys { display: grid; grid-template-columns: repeat(3, 56px); gap: 9px 12px; }
+.keys span { height: 26px; border-radius: 9px; background: linear-gradient(#30303a, #1d1d24); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); font: 600 12px Manrope; color: #8d8d9c; display: flex; align-items: center; justify-content: center; }
+@media (max-width: 860px) {
+  .hero { height: auto; }
+  .hero-stick { position: relative; height: auto; grid-template-columns: 1fr; padding-top: 96px; gap: 0; }
+  .hero-copy p { max-width: none; }
+  .scroll-hint { display: none; }
+  .stage { height: 470px; margin-top: 10px; }
+  .phone { transform: scale(.72) translateY(170px); }
+}
+
+/* ---------- sections ---------- */
+section { padding: 110px 0; }
+.kicker { font: 600 13px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--violet); margin-bottom: 14px; }
+.sec-title { font-size: clamp(32px, 4.6vw, 54px); margin-bottom: 18px; }
+.lead { color: var(--sub); font-size: 19px; max-width: 60ch; }
+.feature { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; padding: 70px 0; border-top: 1px solid var(--line); }
+.feature:nth-child(even) .shots { order: -1; }
+.feature h3 { font-size: 30px; margin-bottom: 14px; }
+.feature p { color: var(--sub); margin: 0 0 14px; }
+.feature ul { margin: 0; padding-left: 20px; color: var(--sub); }
+.feature li { margin: 4px 0; }
+.shots { display: flex; justify-content: center; gap: 22px; flex-wrap: wrap; }
+.device { width: 240px; aspect-ratio: 3 / 4; border-radius: 22px; padding: 10px; background: linear-gradient(160deg, #2c2c36, #131318); box-shadow: 0 24px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1); transform: translateY(var(--ty, 30px)); opacity: var(--op, 0); transition: transform .9s cubic-bezier(.2, .85, .25, 1), opacity .9s ease; }
+.device.small { width: 168px; aspect-ratio: 4 / 5; border-radius: 26px; }
+.device img { width: 100%; height: 100%; border-radius: 12px; display: block; object-fit: cover; }
+.device.swap { position: relative; }
+.device.swap img + img { position: absolute; inset: 10px; width: calc(100% - 20px); height: calc(100% - 20px); opacity: 0; transition: opacity .8s ease; }
+.device.swap.alt img + img { opacity: 1; }
+.in .device { --ty: 0px; --op: 1; }
+.in .device:nth-child(2) { transition-delay: .12s; }
+@media (max-width: 860px) {
+  .feature { grid-template-columns: 1fr; gap: 34px; }
+  .feature:nth-child(even) .shots { order: 0; }
+}
+
+/* terminal */
+.term { background: #07070b; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4); }
+.term .bar { display: flex; gap: 7px; padding: 12px 14px; background: #101017; }
+.term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2c2c36; }
+.term pre { margin: 0; padding: 18px 20px; font-size: 13.5px; line-height: 1.7; color: #c9c9d6; white-space: pre-wrap; }
+.term .p { color: var(--mint); }
+.term .d { color: #6d6d7c; }
+
+/* under the hood */
+.hood { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+.card h4 { font: 700 18px Unbounded; margin: 0 0 10px; }
+.card p { margin: 0; color: var(--sub); font-size: 15.5px; }
+.card code { font-size: 13px; color: var(--pink); }
+@media (max-width: 860px) { .hood { grid-template-columns: 1fr; } }
+
+/* keys + install */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
+table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+td { padding: 11px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { width: 42%; }
+kbd { display: inline-block; padding: 2px 8px; border-radius: 7px; background: #23232d; border: 1px solid #33333f; border-bottom-width: 2px; font: 600 13px "JetBrains Mono", monospace; color: var(--fg); }
+.where { display: block; color: var(--sub); font-size: 13px; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+.steps li { counter-increment: s; position: relative; padding: 0 0 22px 52px; color: var(--sub); }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: -2px; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 700 15px Unbounded; color: #111; background: var(--grad); }
+.steps b { color: var(--fg); }
+.steps pre { margin: 8px 0 0; padding: 12px 14px; border-radius: 12px; background: #07070b; border: 1px solid var(--line); color: #c9c9d6; font-size: 13.5px; overflow-x: auto; }
+@media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+
+footer { padding: 50px 0 70px; border-top: 1px solid var(--line); color: var(--sub); font-size: 15px; }
+footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero { height: auto; }
+  .hero-stick { position: relative; }
+  .device { --ty: 0px; --op: 1; transition: none; }
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/icon.png" alt="">Flippod</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#hood">Under the hood</a>
+      <a href="#install">Install</a>
+      <a class="gh" href="https://github.com/rusty-workshop/flippod">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-stick wrap">
+    <div class="hero-copy">
+      <span class="eyebrow"><i></i>KaiOS 4 · TCL Flip 4 5G</span>
+      <h1>Your flip phone,<br><span class="grad-text">but it's a music player.</span></h1>
+      <p>Flippod turns a rooted TCL Flip 4 into a pocket music player. It's built for the keypad, it lives on the lid screen, and it's quietly the whole home screen.</p>
+      <div class="cta">
+        <a class="btn primary" href="#install">Get it running</a>
+        <a class="btn" href="https://github.com/rusty-workshop/flippod">View the source</a>
+      </div>
+      <div class="scroll-hint">Scroll to open the phone ↓</div>
+    </div>
+    <div class="stage" aria-hidden="true">
+      <div class="glow"></div>
+      <div class="phone">
+        <div class="half lid">
+          <div class="face inside"><div class="screen"><img src="img/main.png" alt=""></div></div>
+          <div class="face outside"><div class="mini"><img src="img/lid-clock.png" alt=""></div></div>
+        </div>
+        <div class="half base">
+          <div class="dpad"><i></i></div>
+          <div class="keys">
+            <span>1</span><span>2 abc</span><span>3 def</span>
+            <span>4 ghi</span><span>5 jkl</span><span>6 mno</span>
+            <span>7 pqrs</span><span>8 tuv</span><span>9 wxyz</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="features">
+  <div class="wrap">
+    <div class="kicker">What it does</div>
+    <h2 class="sec-title">Small screen. <span class="grad-text">Big library.</span></h2>
+    <p class="lead">Everything is laid out for a 240×320 screen and twelve buttons. Lists glide, covers slide, and nothing ever needs a touchscreen.</p>
+
+    <div class="features">
+      <div class="feature reveal">
+        <div>
+          <h3>Your whole library, sorted</h3>
+          <p>Artists, albums, songs, folders, playlists, favorites, recently added and most played. It's all built from the tags already in your files, cover art included.</p>
+          <ul>
+            <li>Reads MP3, M4A, FLAC, Ogg and Opus tags</li>
+            <li><code>.m3u</code> playlists are picked up automatically</li>
+            <li>Press 2 through 9 to jump by letter, hold to fly through long lists</li>
+          </ul>
+        </div>
+        <div class="shots"><div class="device"><img src="img/artists.png" alt="Artists list with round artist art"></div></div>
+      </div>
+
+      <div class="feature reveal">
+        <div>
+          <h3>Now Playing, with lyrics</h3>
+          <p>A blurred cover fills the background, the art slides when you skip, and it shrinks when you pause. Press Down and synced lyrics scroll along with the song.</p>
+          <ul>
+            <li>Hold left or right to scrub, or press 0 through 9 to jump</li>
+            <li>Smart shuffle: favorites come up more often, and the same artist never plays twice in a row</li>
+            <li>The song info reaches Bluetooth headphones and car stereos</li>
+          </ul>
+        </div>
+        <div class="shots"><div class="device swap" id="np-swap"><img src="img/nowplaying.png" alt="Now Playing screen"><img src="img/lyrics.png" alt="Synced lyrics view"></div></div>
+      </div>
+
+      <div class="feature reveal">
+        <div>
+          <h3>The Album Shelf</h3>
+          <p>Flip through every album as a row of tilted covers. The animation runs on the compositor, so it stays smooth even on a phone this small.</p>
+        </div>
+        <div class="shots"><div class="device"><img src="img/shelf.png" alt="3D album shelf"></div></div>
+      </div>
+
+      <div class="feature reveal">
+        <div>
+          <h3>Lives on the lid</h3>
+          <p>With the phone shut, the outer screen shows a vinyl clock with today's listening stats. The ring ticks with the seconds and turns into a battery gauge on the charger. Start a song and it switches to the cover, the title and the current lyric line.</p>
+          <ul>
+            <li>Hold Vol+ to skip, hold Vol− to play or pause</li>
+            <li>Quick presses still change the volume</li>
+          </ul>
+        </div>
+        <div class="shots"><div class="device small"><img src="img/lid-clock.png" alt="Vinyl clock on the lid screen"></div><div class="device small"><img src="img/lid-np.png" alt="Now playing on the lid screen"></div></div>
+      </div>
+
+      <div class="feature reveal">
+        <div>
+          <h3>It's the home screen</h3>
+          <p>Flippod replaces the stock launcher. An Apps menu opens everything else, and Bluetooth settings live inside Flippod, so you can pair headphones without the system's quick settings.</p>
+        </div>
+        <div class="shots"><div class="device"><img src="img/main.png" alt="Main menu"></div><div class="device"><img src="img/bluetooth.png" alt="Bluetooth settings"></div></div>
+      </div>
+
+      <div class="feature reveal">
+        <div>
+          <h3>One command to sync</h3>
+          <p><code>flippod-sync</code> runs on your computer. It fetches synced lyrics from LRCLIB, copies only what changed, and tells Flippod to rescan.</p>
+        </div>
+        <div class="shots" style="display:block">
+          <div class="term"><div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="p">$</span> flippod-sync
+Lyrics: looking up 273 song(s) on LRCLIB...
+  273/273  found 182
+531 file(s) on the laptop, 181 to copy (0.4 MB)
+  copied folder 1/1
+Flippod rescanned: {"added":0,"removed":0,"total":316}
+<span class="d"># --dry-run to preview, --delete to mirror removals</span></pre></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="hood" style="background: var(--bg2)">
+  <div class="wrap">
+    <div class="kicker">Under the hood</div>
+    <h2 class="sec-title">A few good <span class="grad-text">KaiOS tricks</span></h2>
+    <p class="lead">KaiOS 4 is Firefox's engine running on Android's bottom layers. Every app is a web app, and that made some fun things possible.</p>
+    <div class="hood">
+      <div class="card"><h4>A swapped launcher</h4><p>KaiOS hardcodes its home screen to <code>launcher.localhost</code>, which is served from a symlink on the writable data partition. Point it at Flippod and the phone boots into it. Pointing it back undoes it.</p></div>
+      <div class="card"><h4>A patched lid</h4><p>The outer screen is a page inside the system app, also loaded through a symlink. A copy of it with two extra tags adds Flippod's layer on top, while calls and the selfie camera keep working.</p></div>
+      <div class="card"><h4>Settings as a wire</h4><p>Flippod and the lid page talk through KaiOS's own settings service, using <code>flippod.np</code>, <code>flippod.lyrics</code> and <code>flippod.cmd</code>. That's how the side buttons reach the player.</p></div>
+      <div class="card"><h4>Smooth on purpose</h4><p>Moving content with JavaScript every frame was too slow on this chip, so lists scroll natively and the shelf uses CSS transitions. Gecko and the GPU do the heavy lifting.</p></div>
+      <div class="card"><h4>Remote debugging</h4><p>A tiny Firefox remote-debugging client drives the phone from a laptop. It can run code in any app, take screenshots of both screens and press keys, and the whole app was built and tested that way.</p></div>
+      <div class="card"><h4>Its own tag reader</h4><p>It handles ID3v2.2 through 2.4, ID3v1, MP4 atoms, FLAC and Ogg comments, and reads only the bytes it needs, so a 300-song library scans in about ten seconds.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="kicker">Keys &amp; install</div>
+    <h2 class="sec-title">Twelve buttons, <span class="grad-text">zero taps</span></h2>
+    <div class="split">
+      <table>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd><span class="where">lists, hold to speed up</span></td><td>Move</td></tr>
+        <tr><td><kbd>2</kbd>…<kbd>9</kbd><span class="where">lists</span></td><td>Jump by letter</td></tr>
+        <tr><td><kbd>OK</kbd><span class="where">Now Playing</span></td><td>Play or pause</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd><span class="where">Now Playing</span></td><td>Previous or next, hold to seek</td></tr>
+        <tr><td><kbd>↓</kbd><span class="where">Now Playing</span></td><td>Show or hide lyrics</td></tr>
+        <tr><td><kbd>↑</kbd><span class="where">Now Playing</span></td><td>Up Next</td></tr>
+        <tr><td><kbd>Call</kbd><span class="where">anywhere</span></td><td>Jump to Now Playing</td></tr>
+        <tr><td>Hold <kbd>Vol+</kbd> / <kbd>Vol−</kbd><span class="where">lid shut</span></td><td>Next track / play or pause</td></tr>
+      </table>
+      <ol class="steps">
+        <li><b>Root the phone.</b> Flippod needs <code>adb root</code> on a TCL Flip 4 (T440W). See <a href="https://github.com/ambercaravalho/tcl-flip-4-root">tcl-flip-4-root</a>.</li>
+        <li><b>Install and make it home.</b><pre>tools/deploy.sh
+tools/homescreen.sh on</pre></li>
+        <li><b>Add the lid layer</b> (optional).<pre>tools/outer.sh on</pre></li>
+        <li><b>Put music on it.</b> Copy it into the phone's <code>music</code> folder over USB, or run <code>tools/flippod-sync</code>. Everything above can be undone with <code>off</code>.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Flippod is free software under the AGPL-3.0-or-later.</span>
+    <span><a href="https://github.com/rusty-workshop/flippod">rusty-workshop/flippod</a> · made by <a href="https://rusty.is-a.dev">Rusty</a></span>
+  </div>
+</footer>
+
+<script>
+// Hero: open the phone as you scroll through the sticky section.
+const hero = document.querySelector('.hero');
+const root = document.documentElement;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function onScroll() {
+  if (reduce || innerWidth <= 860) { root.style.setProperty('--open', 1); return; }
+  const r = hero.getBoundingClientRect();
+  const span = hero.offsetHeight - innerHeight;
+  const p = Math.min(1, Math.max(0, -r.top / (span * 0.75)));
+  const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  root.style.setProperty('--open', e.toFixed(4));
+}
+addEventListener('scroll', onScroll, { passive: true });
+addEventListener('resize', onScroll);
+onScroll();
+
+// Fade features in as they arrive.
+const io = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) { x.target.classList.add('in'); io.unobserve(x.target); } }), { threshold: 0.25 });
+document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+// Now Playing <-> lyrics swap.
+const sw = document.getElementById('np-swap');
+setInterval(() => sw.classList.toggle('alt'), 3200);
+</script>
+</body>
+</html>
