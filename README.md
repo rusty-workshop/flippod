@@ -18,6 +18,7 @@ A music player and home screen for the **TCL Flip 4 5G** (KaiOS 4.0), built for 
 - **Home screen**: replaces the stock launcher, with an Apps menu to open everything else.
 - **Outer (lid) screen**: a vinyl clock with today's listening stats and battery/charging, which switches to now-playing (cover art, title, progress) while music plays. With the lid shut, **hold Vol+ for the next track** and **hold Vol− to play/pause**; short presses still change the volume.
 - **Bluetooth**: *Settings → Bluetooth* turns it on/off, pairs new devices, and connects, disconnects or forgets paired ones (KaiOS's own quick settings aren't reachable from Flippod).
+- **Bluetooth song info**: the current song and play state go to connected Bluetooth devices, so car stereos and headphones can show the title and artist.
 - **Themes**: Classic, Midnight and Album Color, with six accent colors.
 
 ## Keys

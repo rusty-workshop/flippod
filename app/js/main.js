@@ -6,6 +6,7 @@ import { settings } from './settings.js';
 import { MainMenu, bindStack, openNowPlaying } from './views.js';
 import { initOuter } from './outer.js';
 import * as BT from './bt.js';
+import { initAvrcp } from './avrcp.js';
 
 window.FLIPPOD_VERSION = '1.0.0';
 const HOME = /^launcher\./.test(location.hostname);
@@ -165,6 +166,7 @@ async function boot() {
   warmThumbs();
   try { initOuter(); } catch (e) { console.error('outer bridge', e); }
   BT.init();
+  initAvrcp().catch(() => {});
   if (!player.queue.length) player.restore();
   // watch for new music
   const st = storage();
