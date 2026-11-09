@@ -79,6 +79,8 @@ The outer screen is the system app's `index_remote.html`, which is served from t
 1. Get your token from https://listenbrainz.org/settings/ (sign in with a MusicBrainz account).
 2. With the phone plugged in, run `tools/listenbrainz-login` and paste the token when asked.
 
+To help ListenBrainz learn your taste faster, `tools/listenbrainz-love` marks every song in your library as loved (matched exactly by ISRC from your playlists, otherwise by artist and title). It skips songs you've already loved and caches matches, so re-running it after adding music only handles the new songs.
+
 A song counts once you've heard half of it or 4 minutes. Plays wait in a queue until the phone has Wi-Fi. *Settings → ListenBrainz* shows the queue, has a Send Now button, and opens your Recommendations. `tools/listenbrainz-login --logout` removes the token.
 
 ## Development tools

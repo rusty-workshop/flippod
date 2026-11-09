@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Mark every song in your library as "loved" on ListenBrainz, so it knows your taste without fake listens.
+
+  tools/listenbrainz-love                 # ~/Music
+  tools/listenbrainz-love --dry-run       # match songs, but don't send anything
+  tools/listenbrainz-love ~/Music/Some\\ Folder
+
+Songs are matched to MusicBrainz recordings exactly by ISRC when an .m3u/.m3u8 playlist lists one
+(#EXTISRC), otherwise by artist + title through ListenBrainz's metadata lookup. Matches are cached in
+~/.cache/flippod-sync/mbids.json, and songs you've already loved are skipped, so re-runs are quick.
+The ListenBrainz token is read from Flippod on the phone (set it with tools/listenbrainz-login).
+"""
+import argparse, json, os, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+UA = 'Flippod/1.0 ( https://github.com/rusty-workshop/flippod )'
+LB = 'https://api.listenbrainz.org/1'
+MB = 'https://musicbrainz.org/ws/2'
+AUDIO = {'.mp3', '.m4a', '.flac', '.ogg', '.opus', '.wav'}
+CACHE = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache')) / 'flippod-sync' / 'mbids.json'
+
+
+def http(url, token=None, body=None, tries=5):
+    headers = {'User-Agent': UA, 'Accept': 'application/json'}
+    if token:
+        headers['Authorization'] = f'Token {token}'
+    data = None
+    if body is not None:
+        headers['Content-Type'] = 'application/json'
+        data = json.dumps(body).encode()
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers), timeout=30) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < tries - 1:
+                time.sleep(float(e.headers.get('Retry-After') or 0) or 2 * (attempt + 1))
+                continue
+            if e.code == 404:
+                return None
+            raise
+
+
+def token_from_phone():
+    subprocess.run(['adb', 'forward', 'tcp:6000', 'localfilesystem:/data/local/firefox-debugger-socket'], capture_output=True)
+    from rdp import RDP
+    r = RDP()
+    urls = [t.get('url') or '' for t in r.tabs()]
+    host = 'launcher.localhost' if any('launcher.localhost' in u for u in urls) else 'flippod.localhost'
+    v = json.loads(r.eval(r.target(host), "JSON.stringify([__fp.settings.get('lbToken')||'', __fp.settings.get('lbUser')||''])"))
+    return v[0], v[1]
+
+
+def isrcs_from_playlists(root):
+    """Map audio file path -> ISRC from #EXTISRC lines in .m3u/.m3u8 files."""
+    out = {}
+    for pl in list(root.rglob('*.m3u8')) + list(root.rglob('*.m3u')):
+        isrc = None
+        for line in pl.read_text(errors='ignore').splitlines():
+            line = line.strip()
+            if line.upper().startswith('#EXTISRC:'):
+                isrc = line.split(':', 1)[1].strip()
+            elif line and not line.startswith('#'):
+                if isrc:
+                    out[str((pl.parent / line).resolve())] = isrc
+                isrc = None
+    return out
+
+
+def tags(path):
+    r = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format_tags=artist,title', '-of', 'json', str(path)],
+                       capture_output=True, text=True)
+    try:
+        t = {k.lower(): v for k, v in json.loads(r.stdout)['format'].get('tags', {}).items()}
+    except (ValueError, KeyError):
+        t = {}
+    if not t.get('title') and ' - ' in path.stem:
+        t['artist'], t['title'] = path.stem.split(' - ', 1)
+    return t.get('artist', ''), t.get('title', '')
+
+
+def match(path, isrc, cache, token):
+    key = f'{path}|{isrc or ""}'
+    if key in cache:
+        return cache[key]
+    mbid = None
+    if isrc:
+        try:
+            r = http(f'{MB}/isrc/{urllib.parse.quote(isrc.upper())}?fmt=json')
+        except urllib.error.HTTPError:
+            r = None  # malformed or unknown ISRC: fall back to artist + title
+        time.sleep(1.05)  # MusicBrainz asks for at most one request per second
+        if r and r.get('recordings'):
+            mbid = r['recordings'][0]['id']
+    if not mbid:
+        artist, title = tags(path)
+        if artist and title:
+            try:
+                r = http(f"{LB}/metadata/lookup/?{urllib.parse.urlencode({'artist_name': artist, 'recording_name': title})}", token)
+            except urllib.error.HTTPError:
+                r = None
+            if r and r.get('recording_mbid'):
+                mbid = r['recording_mbid']
+    cache[key] = mbid
+    return mbid
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('source', nargs='?', default=str(Path.home() / 'Music'))
+    ap.add_argument('--dry-run', action='store_true')
+    a = ap.parse_args()
+
+    token, user = token_from_phone()
+    if not token:
+        sys.exit('Flippod has no ListenBrainz token yet. Run tools/listenbrainz-login first.')
+    root = Path(a.source).expanduser().resolve()
+    files = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix.lower() in AUDIO and '.downloading' not in p.parts)
+    isrcs = isrcs_from_playlists(root)
+    cache = json.loads(CACHE.read_text()) if CACHE.exists() else {}
+
+    loved = set()
+    offset = 0
+    while True:
+        r = http(f'{LB}/feedback/user/{urllib.parse.quote(user)}/get-feedback?score=1&count=1000&offset={offset}', token)
+        fb = (r or {}).get('feedback', [])
+        loved.update(f['recording_mbid'] for f in fb if f.get('recording_mbid'))
+        if len(fb) < 1000:
+            break
+        offset += 1000
+
+    print(f'{len(files)} songs, {len(isrcs)} with an ISRC, {len(loved)} already loved on ListenBrainz as {user}.')
+    todo, unmatched = [], []
+    for i, p in enumerate(files, 1):
+        mbid = match(str(p), isrcs.get(str(p)), cache, token)
+        (todo if mbid and mbid not in loved else unmatched if not mbid else []).append((p, mbid))
+        print(f'\r  matching {i}/{len(files)}  (to love: {len(todo)}, no match: {len(unmatched)})', end='', flush=True)
+        if i % 20 == 0:
+            CACHE.parent.mkdir(parents=True, exist_ok=True)
+            CACHE.write_text(json.dumps(cache))
+    print()
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE.write_text(json.dumps(cache))
+
+    if unmatched:
+        print(f'No MusicBrainz match for {len(unmatched)} song(s), e.g.:')
+        for p, _ in unmatched[:8]:
+            print('   ', p.stem)
+    if a.dry_run:
+        print(f'Dry run: would love {len(todo)} song(s).')
+        return
+    seen = set()
+    sent = 0
+    for p, mbid in todo:
+        if mbid in seen:
+            continue
+        seen.add(mbid)
+        http(f'{LB}/feedback/recording-feedback', token, {'recording_mbid': mbid, 'score': 1})
+        sent += 1
+        print(f'\r  loved {sent}', end='', flush=True)
+    print(f'\nDone: loved {sent} song(s) on ListenBrainz.')
+
+
+if __name__ == '__main__':
+    main()
